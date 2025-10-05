@@ -1,0 +1,10 @@
+# ignore vcs repos
+src/planning/
+src/control/
+src/perception/
+src/mapping_and_localization/
+
+# build artifacts
+build/
+install/
+log/

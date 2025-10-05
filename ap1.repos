@@ -1,0 +1,24 @@
+repositories:
+  perception:
+    type: git
+    url: 'https://github.com/WE-Autopilot/perception'
+    version: main
+    path: 'src/perception'
+
+  mapping_and_localization:
+    type: git
+    url: 'https://github.com/WE-Autopilot/mapping-and-localization'
+    version: main
+    path: 'src/mapping_and_localization'
+
+  planning:
+    type: git
+    url: 'https://github.com/WE-Autopilot/planning'
+    version: main
+    path: 'src/planning'
+      
+  control:
+    type: git
+    url: 'https://github.com/WE-Autopilot/control'
+    version: main
+    path: 'src/control'
