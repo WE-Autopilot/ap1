@@ -1,7 +1,6 @@
 # ignore vcs repos
-src/planning/
-src/control/
 src/perception/
+src/planning_and_control/
 src/mapping_and_localization/
 
 # build artifacts
