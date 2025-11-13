@@ -7,3 +7,5 @@ src/mapping_and_localization/
 build/
 install/
 log/
+
+/venv
