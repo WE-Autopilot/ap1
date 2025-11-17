@@ -23,3 +23,8 @@ repositories:
     type: git
     url: 'https://github.com/WE-Autopilot/control-interface'
     version: main 
+
+  src/ap1_msgs:
+    type: git
+    url: 'https://github.com/WE-Autopilot/ap1_msgs'
+    version: main
