@@ -8,3 +8,5 @@ src/ap1_msgs
 build/
 install/
 log/
+
+/venv
