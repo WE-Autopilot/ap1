@@ -9,4 +9,5 @@ build/
 install/
 log/
 
-/venv
+# Python things
+**/.venv/

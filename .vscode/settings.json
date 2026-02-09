@@ -1,0 +1,20 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/aly/Desktop/ap1/install/mapping_localization_python/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1/install/ap1_console/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1/install/ap1_msgs/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1/install/ap1_launch/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1_msgs/install/ap1_msgs/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/aly/Desktop/ap1/install/mapping_localization_python/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1/install/ap1_console/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1/install/ap1_msgs/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1/install/ap1_launch/lib/python3.12/site-packages",
+        "/home/aly/Desktop/ap1_msgs/install/ap1_msgs/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "cmake.ignoreCMakeListsMissing": true,
+    "ROS2.distro": "jazzy"
+}

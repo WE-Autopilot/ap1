@@ -19,9 +19,9 @@ repositories:
     url: 'https://github.com/WE-Autopilot/control'
     version: main
 
-  src/planning_and_control/control_interface:
+  src/planning_and_control/console:
     type: git
-    url: 'https://github.com/WE-Autopilot/control-interface'
+    url: 'https://github.com/WE-Autopilot/console'
     version: main 
 
   src/ap1_msgs:

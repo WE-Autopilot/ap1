@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/aly/Desktop/ap1/install/ap1_msgs/include/**",
+        "/home/aly/Desktop/ap1_msgs/install/ap1_msgs/include/**",
+        "/opt/ros/jazzy/include/**",
+        "/home/aly/Desktop/ap1/src/planning_and_control/control/include/**",
+        "/home/aly/Desktop/ap1/src/planning_and_control/planning/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ros2",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}

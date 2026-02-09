@@ -1,46 +1,49 @@
+import os 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import TimerAction
+from launch.actions import Shutdown
 from launch_ros.actions import Node
 
 '''
 This file kinda works, but because of the logs of the other packages, it screws up the interface itself, not being able to click
 '''
 def generate_launch_description():
-    control = Node(
+    # Helper so that a failure in this node takes down all of AP1 instead of just continuing
+    def CriticalNode(**kwargs):
+        return Node(on_exit=Shutdown(), **kwargs)
+    
+    # == CONTROL NODE ==
+    # needs a path to control cfg.csv
+    pkg_share = get_package_share_directory('ap1_control')
+    csv_file_path = os.path.join(pkg_share, 'config', 'control_node_cfg.csv')
+    control = CriticalNode(
         package='ap1_control',
         executable='control_node',
         name='ap1_control',
         output='log', 
-        # need to change this but this works for the time being
         arguments=[
-            '/home/obaidmm/Repo/ap1/src/planning_and_control/control/control_node_cfg.csv',
+            csv_file_path
         ],
     )
 
-    planner = Node(
+    # == PLANNER NODE ==
+    planner = CriticalNode(
         package='ap1_planning',
         executable='planner_node',
         name='ap1_planning',
         output='log', 
     )
 
-    sim = Node(
-        package='ap1_pnc_sim',
-        executable='pnc_sim_node',
-        name='sim_node',
-        output='log', 
-    )
-
-    ui = Node(
-        package='ap1_control_interface',
-        executable='system_interface',
-        name='ap1_control_interface',
+    # == CONSOLE NODE ==
+    console = Node(
+        package='ap1_console',
+        executable='system_interface', # TODO: rename "console"
+        name='ap1_console',
         output='screen',  
     )
 
     return LaunchDescription([
         control,
-        TimerAction(period=2.0, actions=[planner]),
-        TimerAction(period=4.0, actions=[sim]),
-        TimerAction(period=6.0, actions=[ui]),
+        planner,
+        console,
     ])
