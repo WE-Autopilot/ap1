@@ -37,7 +37,7 @@ def generate_launch_description():
     # == CONSOLE NODE ==
     console = Node(
         package='ap1_console',
-        executable='system_interface', # TODO: rename "console"
+        executable='console',
         name='ap1_console',
         output='screen',  
     )
