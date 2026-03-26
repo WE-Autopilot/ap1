@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(ap1_launch)
+project(ap1_bringup)
 
 find_package(ament_cmake REQUIRED)
 

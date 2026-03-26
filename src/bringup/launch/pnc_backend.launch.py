@@ -3,7 +3,7 @@ from launch.actions import TimerAction
 from launch_ros.actions import Node
 
 '''
-Run this file initially with ros2 launch ap1_launch pnc_backend.launch.py 
+Run this file initially with ros2 launch ap1_bringup pnc_backend.launch.py 
 
 it will get planning, control and the sim up and running 
 '''
