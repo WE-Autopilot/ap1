@@ -39,16 +39,26 @@ def generate_launch_description():
         ]
     )
 
+    # == PERCEPTION NODE ==
+    pkg_share = get_package_share_directory('ap1_perception')
+    perception = CriticalNode(
+        package='ap1_perception',
+        executable='percpetion_node',
+        name='ap1_perception',
+        output='log',
+    )
+
     # == CONSOLE NODE ==
     console = Node(
         package='ap1_console',
         executable='console',
         name='ap1_console',
-        output='screen',  
+        output='screen',
     )
 
     return LaunchDescription([
         control,
         planner,
+        perception,
         console,
     ])
