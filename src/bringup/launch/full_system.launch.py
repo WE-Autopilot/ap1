@@ -1,8 +1,9 @@
 import os 
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import Shutdown
 from launch_ros.actions import Node
+from launch.actions import Shutdown, IncludeLaunchDescription
+from ament_index_python.packages import get_package_share_directory
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 '''
 This file kinda works, but because of the logs of the other packages, it screws up the interface itself, not being able to click
@@ -47,8 +48,20 @@ def generate_launch_description():
         output='screen',  
     )
 
+    # == MAPPING ==
+    mapping = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('mapping_localization_python'),
+                'launch',
+                'mapping_pipeline.launch.py'
+            )
+        )
+    )
+
     return LaunchDescription([
         control,
         planner,
         console,
+        mapping
     ])
