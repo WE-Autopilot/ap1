@@ -2,7 +2,7 @@
 src/perception/
 src/planning_and_control/
 src/mapping_and_localization/
-src/msgs
+src/ap1_msgs
 
 # build artifacts
 build/
