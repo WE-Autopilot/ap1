@@ -11,3 +11,4 @@ log/
 
 # Python things
 **/.venv/
+.vscode
