@@ -40,12 +40,17 @@ def generate_launch_description():
         ]
     )
 
-    # == PERCEPTION NODE ==
-    pkg_share = get_package_share_directory('ap1_perception')
-    perception = CriticalNode(
+    # == PERCEPTION NODES ==
+    yolo = CriticalNode(
         package='ap1_perception',
-        executable='percpetion_node',
-        name='ap1_perception',
+        executable='yolo_node',
+        name='ap1_yolo',
+        output='log',
+    )
+    ufld_ground = CriticalNode(
+        package='ap1_perception',
+        executable='ufld_ground_node',
+        name='ap1_ufld_ground',
         output='log',
     )
 
@@ -71,7 +76,8 @@ def generate_launch_description():
     return LaunchDescription([
         control,
         planner,
-        perception,
+        yolo,
+        ufld_ground,
         console,
         mapping
     ])
