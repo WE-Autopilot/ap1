@@ -7,6 +7,17 @@
 - `zsh` or `bash`
 - `colcon` build tool
 
+# Option 1 -- Script (Recommended)
+
+This script will auto detect if you're using zsh or bash and other environment variables. You may need to give sudo permissions to the script.s
+
+```bash
+chmod +x ap1_setup.sh
+./ap1_setup.sh
+```
+
+# Option 2 -- Manually (If Script Doesn't Work)
+
 ---
 
 ## 1. Clone the Workspace
