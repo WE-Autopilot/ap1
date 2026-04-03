@@ -234,7 +234,11 @@ else
         rosdep update
     fi
     info "Running rosdep install..."
-    (cd "$WS_ROOT" && rosdep install --from-paths src --ignore-src -r -y)
+    (cd "$WS_ROOT" && rosdep install \
+            --from-paths src \
+            --ignore-src \
+            -r -y \
+            --skip-keys "ap1_perception ros-jazzy-perception ultralytics onnxruntime opencv-python torch pyrealsense2 pyqt5")
     ok "rosdep install complete"
 fi
 
