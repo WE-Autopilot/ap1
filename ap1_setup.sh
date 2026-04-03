@@ -233,12 +233,29 @@ else
         sudo rosdep init 2>/dev/null || warn "rosdep init failed (may already be initialized)"
         rosdep update
     fi
+    # Detect architecture — some packages have no ARM64 apt binaries for Jazzy
+    ARCH=$(uname -m)
+    info "Architecture detected: $ARCH"
+
+    # Base skip keys — perception Python deps are fully managed by uv, not rosdep
+    SKIP_KEYS="ap1_perception ultralytics onnxruntime opencv-python torch pyqt5 pyqt6"
+
+    # ARM64-specific: pyrealsense2 and several perception packages
+    # have no Jazzy aarch64 apt binaries available
+    if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+        warn "ARM64 detected — adding extra skip keys for packages with no Jazzy ARM64 apt binaries"
+        SKIP_KEYS="$SKIP_KEYS pyrealsense2 librealsense2 ros-jazzy-realsense2-camera ros-jazzy-perception"
+    fi
+
     info "Running rosdep install..."
-    (cd "$WS_ROOT" && rosdep install \
+    info "Skipping keys (managed by uv or unavailable on this arch): $SKIP_KEYS"
+    (
+        cd "$WS_ROOT" && rosdep install \
             --from-paths src \
             --ignore-src \
             -r -y \
-            --skip-keys "ap1_perception ros-jazzy-perception ultralytics onnxruntime opencv-python torch pyrealsense2 pyqt5")
+            --skip-keys "$SKIP_KEYS"
+    )
     ok "rosdep install complete"
 fi
 
