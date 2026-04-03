@@ -175,6 +175,12 @@ else
     (cd "$PERCEPTION_DIR" && uv sync)
     ok "uv sync complete"
 
+    # Activate the venv for the rest of this script session
+    set +u
+    source "$PERCEPTION_DIR/.venv/bin/activate"
+    set -u
+    ok "Perception venv activated: $VIRTUAL_ENV"
+
     # Detect the actual Python version used by the venv
     VENV_PYTHON=$(ls "$PERCEPTION_DIR/.venv/lib/" 2>/dev/null | grep "python" | head -1)
     if [[ -z "$VENV_PYTHON" ]]; then
@@ -279,6 +285,25 @@ fi
 # =============================================================================
 # 9. BUILD THE WORKSPACE
 # =============================================================================
+
+# empy==3.3.4 must be on the SYSTEM Python before colcon build.
+# empy 4.x changed its API and breaks ROS2 code generation (rosidl, ament).
+# Must be installed globally — NOT inside the uv venv.
+info "Checking empy version for colcon compatibility..."
+EMPY_OK=false
+if /usr/bin/python3 -c "import em; v=getattr(em,'__version__','0'); assert v.startswith('3.')" 2>/dev/null; then
+    ok "empy 3.x already installed on system Python"
+    EMPY_OK=true
+fi
+if ! $EMPY_OK; then
+    warn "Installing empy==3.3.4 on system Python (required by colcon/rosidl)..."
+    pip install "empy==3.3.4" --break-system-packages 2>/dev/null \
+        || pip install "empy==3.3.4" 2>/dev/null \
+        || sudo pip install "empy==3.3.4" --break-system-packages 2>/dev/null \
+        || { err "Failed to install empy==3.3.4. Run: sudo pip install empy==3.3.4 --break-system-packages"; ERRORS=$((ERRORS+1)); }
+    ok "empy==3.3.4 installed"
+fi
+
 step "Building the workspace with colcon"
 
 info "Building from $WS_ROOT ..."
@@ -299,17 +324,6 @@ if [[ -f "$WS_ROOT/install/setup.bash" ]]; then
 else
     err "Build may have failed — install/setup.bash not found"
     ERRORS=$((ERRORS+1))
-fi
-
-# Activate perception venv AFTER the workspace is built
-# (colcon must not run inside the venv to avoid polluting the build)
-if [[ -f "$PERCEPTION_DIR/.venv/bin/activate" ]]; then
-    set +u
-    source "$PERCEPTION_DIR/.venv/bin/activate"
-    set -u
-    ok "Perception venv activated: $VIRTUAL_ENV"
-else
-    warn "Perception venv not found — was uv sync successful?"
 fi
 
 # =============================================================================
