@@ -24,7 +24,7 @@ repositories:
     url: 'https://github.com/WE-Autopilot/console'
     version: main 
 
-  src/ap1_msgs:
+  src/msgs:
     type: git
     url: 'https://github.com/WE-Autopilot/ap1_msgs'
     version: main
