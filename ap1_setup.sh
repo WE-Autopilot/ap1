@@ -107,8 +107,10 @@ else
         ok "ROS2 is already sourced in this terminal"
     else
         info "Sourcing ROS2 for this session..."
+        set +u  # ROS2 setup.bash uses unbound vars
         # shellcheck disable=SC1090
         source "$ROS_SETUP"
+        set -u
         ok "ROS2 sourced"
     fi
 fi
@@ -281,14 +283,18 @@ step "Building the workspace with colcon"
 info "Building from $WS_ROOT ..."
 (
     cd "$WS_ROOT"
+    set +u  # ROS2 setup.bash uses unbound vars (AMENT_TRACE_SETUP_FILES)
     source "$ROS_SETUP"
+    set -u
     colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1 | \
         grep -E "(Starting|Finished|Failed|Error|error:|warning:)" || true
 )
 
 if [[ -f "$WS_ROOT/install/setup.bash" ]]; then
     ok "Build succeeded — install/setup.bash exists"
+    set +u
     source "$WS_ROOT/install/setup.bash"
+    set -u
 else
     err "Build may have failed — install/setup.bash not found"
     ERRORS=$((ERRORS+1))
@@ -327,8 +333,10 @@ add_to_rc "$PYTHONPATH_LINE"    "perception venv PYTHONPATH"
 hdr "Verification"
 
 info "Checking ROS2 can find ap1 packages..."
+set +u
 source "$ROS_SETUP"
 source "$WS_INSTALL_SETUP"
+set -u
 export PYTHONPATH="$VENV_SITE_PACKAGES:${PYTHONPATH:-}"
 
 PACKAGES=(ap1_msgs ap1_bringup ap1_control ap1_planning ap1_perception ap1_console mapping_localization_python)
