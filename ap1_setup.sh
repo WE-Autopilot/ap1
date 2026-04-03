@@ -234,7 +234,7 @@ else
         rosdep update
     fi
     info "Running rosdep install..."
-    (cd "$WS_ROOT" && rosdep install --from-paths src --ignore-src -r -y 2>&1 | tail -5)
+    (cd "$WS_ROOT" && rosdep install --from-paths src --ignore-src -r -y)
     ok "rosdep install complete"
 fi
 
