@@ -175,12 +175,19 @@ else
     (cd "$PERCEPTION_DIR" && uv sync)
     ok "uv sync complete"
 
+    # Activate the venv for the rest of this script session
+    set +u
+    source "$PERCEPTION_DIR/.venv/bin/activate"
+    set -u
+    ok "Perception venv activated: $VIRTUAL_ENV"
+
     # Detect the actual Python version used by the venv
     VENV_PYTHON=$(ls "$PERCEPTION_DIR/.venv/lib/" 2>/dev/null | grep "python" | head -1)
     if [[ -z "$VENV_PYTHON" ]]; then
         warn "Could not detect Python version in venv, defaulting to python3.12"
         VENV_PYTHON="python3.12"
     fi
+    # Build the exact absolute path — e.g. /home/maharshii/Documents/ap1/src/perception/.venv/lib/python3.12/site-packages
     VENV_SITE_PACKAGES="$PERCEPTION_DIR/.venv/lib/$VENV_PYTHON/site-packages"
 
     if [[ -d "$VENV_SITE_PACKAGES" ]]; then
@@ -306,7 +313,9 @@ fi
 step "Configuring $RC_FILE"
 
 WS_INSTALL_SETUP="$WS_ROOT/install/setup.bash"
-PYTHONPATH_LINE="export PYTHONPATH=$VENV_SITE_PACKAGES:\$PYTHONPATH"
+# Resolve to absolute path so the RC line works in any future shell (no variables)
+VENV_SITE_PACKAGES_ABS="$(realpath "$VENV_SITE_PACKAGES" 2>/dev/null || echo "$VENV_SITE_PACKAGES")"
+PYTHONPATH_LINE="export PYTHONPATH=$VENV_SITE_PACKAGES_ABS:\$PYTHONPATH"
 ROS_LINE="source $ROS_SETUP"
 WS_LINE="source $WS_INSTALL_SETUP"
 
@@ -337,7 +346,7 @@ set +u
 source "$ROS_SETUP"
 source "$WS_INSTALL_SETUP"
 set -u
-export PYTHONPATH="$VENV_SITE_PACKAGES:${PYTHONPATH:-}"
+export PYTHONPATH="${VENV_SITE_PACKAGES_ABS:-$VENV_SITE_PACKAGES}:${PYTHONPATH:-}"
 
 PACKAGES=(ap1_msgs ap1_bringup ap1_control ap1_planning ap1_perception ap1_console mapping_localization_python)
 for pkg in "${PACKAGES[@]}"; do
