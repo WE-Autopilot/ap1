@@ -247,6 +247,10 @@ else
         SKIP_KEYS="$SKIP_KEYS pyrealsense2 librealsense2 ros-jazzy-realsense2-camera ros-jazzy-perception"
     fi
 
+    # Refresh apt cache first — stale cache causes 404s on ARM64 Ubuntu ports mirror
+    info "Refreshing apt cache before rosdep..."
+    sudo apt-get update -qq || warn "apt-get update had warnings — continuing anyway"
+
     info "Running rosdep install..."
     info "Skipping keys (managed by uv or unavailable on this arch): $SKIP_KEYS"
     (
@@ -255,7 +259,17 @@ else
             --ignore-src \
             -r -y \
             --skip-keys "$SKIP_KEYS"
-    )
+    ) || {
+        warn "rosdep had failures — retrying with --fix-missing..."
+        sudo apt-get install -f -y 2>/dev/null || true
+        (
+            cd "$WS_ROOT" && rosdep install \
+                --from-paths src \
+                --ignore-src \
+                -r -y \
+                --skip-keys "$SKIP_KEYS"
+        )
+    }
     ok "rosdep install complete"
 fi
 
