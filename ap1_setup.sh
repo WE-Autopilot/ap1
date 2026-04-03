@@ -175,12 +175,6 @@ else
     (cd "$PERCEPTION_DIR" && uv sync)
     ok "uv sync complete"
 
-    # Activate the venv for the rest of this script session
-    set +u
-    source "$PERCEPTION_DIR/.venv/bin/activate"
-    set -u
-    ok "Perception venv activated: $VIRTUAL_ENV"
-
     # Detect the actual Python version used by the venv
     VENV_PYTHON=$(ls "$PERCEPTION_DIR/.venv/lib/" 2>/dev/null | grep "python" | head -1)
     if [[ -z "$VENV_PYTHON" ]]; then
@@ -305,6 +299,17 @@ if [[ -f "$WS_ROOT/install/setup.bash" ]]; then
 else
     err "Build may have failed — install/setup.bash not found"
     ERRORS=$((ERRORS+1))
+fi
+
+# Activate perception venv AFTER the workspace is built
+# (colcon must not run inside the venv to avoid polluting the build)
+if [[ -f "$PERCEPTION_DIR/.venv/bin/activate" ]]; then
+    set +u
+    source "$PERCEPTION_DIR/.venv/bin/activate"
+    set -u
+    ok "Perception venv activated: $VIRTUAL_ENV"
+else
+    warn "Perception venv not found — was uv sync successful?"
 fi
 
 # =============================================================================
