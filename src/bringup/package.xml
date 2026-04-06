@@ -10,10 +10,6 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
-  <exec_depend>perception</exec_depend>
-  <exec_depend>planning</exec_depend>
-  <exec_depend>control</exec_depend>
-  <exec_depend>mapping_and_localization</exec_depend>
   <export>
     <build_type>ament_python</build_type>
   </export>
