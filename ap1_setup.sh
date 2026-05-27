@@ -36,7 +36,7 @@ echo -e "  Detecting workspace...\n"
 find_workspace() {
     local dir="$1"
     while [[ "$dir" != "/" ]]; do
-        if [[ -d "$dir/src" && -d "$dir/src/perception" ]]; then
+        if [[ -f "$dir/ap1.repos" && -d "$dir/src" ]]; then
             echo "$dir"
             return 0
         fi
@@ -69,7 +69,13 @@ else
 fi
 
 SRC_DIR="$WS_ROOT/src"
-PERCEPTION_DIR="$SRC_DIR/perception"
+if [[ -d "$SRC_DIR/src/perception" ]]; then
+    PERCEPTION_DIR="$SRC_DIR/src/perception"
+elif [[ -d "$SRC_DIR/perception" ]]; then
+    PERCEPTION_DIR="$SRC_DIR/perception"
+else
+    PERCEPTION_DIR="$SRC_DIR/perception"
+fi
 
 # =============================================================================
 # 2. DETECT SHELL & RC FILE
@@ -398,7 +404,7 @@ else
 fi
 
 echo -e "${BOLD}  To launch the full system, open a new terminal and run:${NC}"
-echo -e "  ${CYAN}ros2 launch ap1bringup fullsystem.launch.py${NC}\n"
+echo -e "  ${CYAN}ros2 launch ap1_bringup full_system.launch.py${NC}\n"
 echo -e "${BOLD}  Or for PnC + sim only:${NC}"
-echo -e "  ${CYAN}ros2 launch ap1bringup pncbackend.launch.py${NC}\n"
+echo -e "  ${CYAN}ros2 launch ap1_bringup pncbackend.launch.py${NC}\n"
 echo -e "  ${YELLOW}Note: Open a NEW terminal so the RC file changes take effect.${NC}\n"
