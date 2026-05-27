@@ -1,6 +1,8 @@
+import os
 from launch import LaunchDescription
 from launch.actions import TimerAction
 from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
 
 '''
 Run this file initially with ros2 launch ap1_bringup pnc_backend.launch.py 
@@ -13,10 +15,9 @@ def generate_launch_description():
         package='ap1_control',
         executable='control_node',
         name='ap1_control',
-        output='screen', 
+        output='screen',
         arguments=[
-            # should be removed down the line, using a filler for now 
-            '/home/obaidmm/Repo/ap1/src/planning_and_control/control/control_node_cfg.csv',
+            os.path.join(get_package_share_directory('ap1_control'), 'config', 'control_node_cfg.csv'),
         ],
     )
 
@@ -25,6 +26,9 @@ def generate_launch_description():
         executable='planner_node',
         name='ap1_planning',
         output='screen',
+        arguments=[
+            os.path.join(get_package_share_directory('ap1_planning'), 'config', 'stop_sign_transitions.yaml'),
+        ],
     )
 
     sim = Node(
