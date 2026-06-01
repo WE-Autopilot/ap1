@@ -6,4 +6,4 @@ To use clone then use vcs in ROS2 to pull subrepos.
 `vcs import < ap1.repos`
 
 All teams' code is located under their folder in `src/`.
-Launch code is located in the launch pkg: `src/ap1_launch` and is tracked in THIS repository. This is the only pkg that is tracked in this repository.  
+Launch code is located in the bringup package: `src/bringup` and is tracked in THIS repository. This is the only package tracked directly in this repository.  

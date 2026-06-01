@@ -104,7 +104,7 @@ ros2 launch ap1_bringup full_system.launch.py
 
 ### Planning, Control & Sim only
 ```bash
-ros2 launch ap1_bringup pncbackend.launch.py
+ros2 launch ap1_bringup pnc_backend.launch.py
 ```
 
 ### Mapping & Localization pipeline only

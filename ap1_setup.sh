@@ -51,10 +51,10 @@ WS_ROOT=""
 if WS_ROOT=$(find_workspace "$(pwd)"); then
     ok "Found workspace at: $WS_ROOT"
 # 2. Check common locations
-elif [[ -d "$HOME/Documents/ap1/src/perception" ]]; then
+elif [[ -f "$HOME/Documents/ap1/ap1.repos" && -d "$HOME/Documents/ap1/src" ]]; then
     WS_ROOT="$HOME/Documents/ap1"
     ok "Found workspace at: $WS_ROOT"
-elif [[ -d "$HOME/ap1/src/perception" ]]; then
+elif [[ -f "$HOME/ap1/ap1.repos" && -d "$HOME/ap1/src" ]]; then
     WS_ROOT="$HOME/ap1"
     ok "Found workspace at: $WS_ROOT"
 else
@@ -406,5 +406,5 @@ fi
 echo -e "${BOLD}  To launch the full system, open a new terminal and run:${NC}"
 echo -e "  ${CYAN}ros2 launch ap1_bringup full_system.launch.py${NC}\n"
 echo -e "${BOLD}  Or for PnC + sim only:${NC}"
-echo -e "  ${CYAN}ros2 launch ap1_bringup pncbackend.launch.py${NC}\n"
+echo -e "  ${CYAN}ros2 launch ap1_bringup pnc_backend.launch.py${NC}\n"
 echo -e "  ${YELLOW}Note: Open a NEW terminal so the RC file changes take effect.${NC}\n"
