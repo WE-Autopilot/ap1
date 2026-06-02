@@ -214,6 +214,13 @@ else
             ERRORS=$((ERRORS+1))
         fi
     done
+
+    # Keep perception dependencies in uv, but do not build ROS packages from
+    # inside that venv. ament/rosidl need the system ROS Python environment.
+    if declare -F deactivate >/dev/null; then
+        deactivate
+        ok "Perception venv deactivated before ROS build"
+    fi
 fi
 
 # =============================================================================
@@ -253,7 +260,7 @@ else
     info "Architecture detected: $ARCH"
 
     # Base skip keys — perception Python deps are fully managed by uv, not rosdep
-    SKIP_KEYS="ap1_perception ultralytics onnxruntime opencv-python torch pyqt5 pyqt6"
+    SKIP_KEYS="ap1_perception ultralytics onnxruntime opencv-python torch pyqt5 pyqt6 python3-pyqt6"
 
     # ARM64-specific: pyrealsense2 and several perception packages
     # have no Jazzy aarch64 apt binaries available
@@ -313,22 +320,27 @@ fi
 step "Building the workspace with colcon"
 
 info "Building from $WS_ROOT ..."
+BUILD_OK=false
 (
     cd "$WS_ROOT"
+    unset VIRTUAL_ENV
+    unset PYTHONHOME
     set +u  # ROS2 setup.bash uses unbound vars (AMENT_TRACE_SETUP_FILES)
     source "$ROS_SETUP"
     set -u
     colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1 | \
+        tee /tmp/ap1_colcon_build.log | \
         grep -E "(Starting|Finished|Failed|Error|error:|warning:)" || true
-)
+    exit "${PIPESTATUS[0]}"
+) && BUILD_OK=true
 
-if [[ -f "$WS_ROOT/install/setup.bash" ]]; then
-    ok "Build succeeded — install/setup.bash exists"
+if $BUILD_OK && [[ -f "$WS_ROOT/install/setup.bash" ]]; then
+    ok "Build succeeded"
     set +u
     source "$WS_ROOT/install/setup.bash"
     set -u
 else
-    err "Build may have failed — install/setup.bash not found"
+    err "Build failed - review /tmp/ap1_colcon_build.log"
     ERRORS=$((ERRORS+1))
 fi
 
