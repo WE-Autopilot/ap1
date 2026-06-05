@@ -23,11 +23,15 @@ chmod +x ap1_setup.sh
 ## 1. Clone the Workspace
 
 ```bash
-mkdir -p ~/Documents/ap1/src
-cd ~/Documents/ap1/src
+mkdir -p ~/Documents/ap1
+cd ~/Documents/ap1
 
 vcs import < ap1.repos
 ```
+
+Run `vcs import` from the workspace root. The paths in `ap1.repos` already
+include `src/`, so importing from inside `src/` creates nested paths such as
+`src/src/perception`.
 
 ---
 
