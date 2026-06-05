@@ -102,7 +102,7 @@ source ~/Documents/ap1/install/setup.bash
 ros2 launch ap1_bringup full_system.launch.py
 ```
 
-### Planning, Control & Sim only
+### Planning & Control only
 ```bash
 ros2 launch ap1_bringup pnc_backend.launch.py
 ```
@@ -125,7 +125,39 @@ ros2 run ap1_console console
 
 ---
 
-## 7. Verify Everything is Running
+## 7. Replay a Recorded RealSense Bag
+
+RealSense `.bag` files are not ROS2 bags, so replay them through
+`realsense2_camera` instead of `ros2 bag play`.
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/Documents/ap1/install/setup.bash
+
+ros2 launch realsense2_camera rs_launch.py \
+  rosbag_filename:=/absolute/path/to/recording.bag \
+  align_depth.enable:=true \
+  pointcloud.enable:=true \
+  rosbag_loop:=false
+```
+
+Use `pointcloud.enable:=true` so perception nodes that subscribe to
+`/camera/camera/depth/color/points` receive data. Prefer `rosbag_loop:=false`
+for integration testing; looping can replay/reset quickly and make logs hard to
+read.
+
+Quick topic checks:
+
+```bash
+ros2 topic hz /camera/camera/color/image_raw
+ros2 topic hz /camera/camera/depth/color/points
+ros2 topic echo --once /ap1/perception/lanes
+ros2 topic echo --once /ap1/mapping/lanes
+```
+
+---
+
+## 8. Verify Everything is Running
 
 ```bash
 # List all active nodes
