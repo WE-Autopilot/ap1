@@ -1,17 +1,64 @@
-import os 
+import os
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import Shutdown, IncludeLaunchDescription
+from launch.actions import (
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+    Shutdown,
+)
 from ament_index_python.packages import get_package_share_directory
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 '''
 This file kinda works, but because of the logs of the other packages, it screws up the interface itself, not being able to click
 '''
+
+
+def _find_perception_venv_site_packages():
+    override = os.environ.get('AP1_PERCEPTION_VENV')
+    candidates = []
+    if override:
+        override_path = Path(override).expanduser()
+        candidates.extend([
+            override_path,
+            override_path / 'lib',
+        ])
+
+    for parent in Path(__file__).resolve().parents:
+        candidates.extend([
+            parent / '.venv' / 'lib',
+            parent / 'src' / 'perception' / '.venv' / 'lib',
+            parent / 'src' / 'src' / 'perception' / '.venv' / 'lib',
+        ])
+
+    for candidate in candidates:
+        if candidate.name == 'site-packages' and candidate.exists():
+            return str(candidate)
+        if candidate.exists():
+            matches = sorted(candidate.glob('python3*/site-packages'))
+            if matches:
+                return str(matches[0])
+
+    return None
+
+
 def generate_launch_description():
     # Helper so that a failure in this node takes down all of AP1 instead of just continuing
     def CriticalNode(**kwargs):
         return Node(on_exit=Shutdown(), **kwargs)
+
+    perception_site_packages = _find_perception_venv_site_packages()
+    env_actions = (
+        [
+            SetEnvironmentVariable(
+                'PYTHONPATH',
+                perception_site_packages + ':' + os.environ.get('PYTHONPATH', ''),
+            )
+        ]
+        if perception_site_packages else []
+    )
     
     # == CONTROL NODE ==
     # needs a path to control cfg.csv
@@ -73,7 +120,7 @@ def generate_launch_description():
         )
     )
 
-    return LaunchDescription([
+    return LaunchDescription(env_actions + [
         control,
         planner,
         yolo,
