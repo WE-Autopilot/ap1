@@ -1,7 +1,11 @@
-import os 
+import os
+
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
+from launch.conditions import IfCondition
+from launch.conditions import UnlessCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch.actions import Shutdown, IncludeLaunchDescription
 from ament_index_python.packages import get_package_share_directory
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
@@ -9,6 +13,12 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 This file kinda works, but because of the logs of the other packages, it screws up the interface itself, not being able to click
 '''
 def generate_launch_description():
+    use_synthetic_actuation_feedback = LaunchConfiguration(
+        'use_synthetic_actuation_feedback'
+    )
+    use_synthetic_odometry = LaunchConfiguration('use_synthetic_odometry')
+    use_synthetic_perception = LaunchConfiguration('use_synthetic_perception')
+
     # Helper so that a failure in this node takes down all of AP1 instead of just continuing
     def CriticalNode(**kwargs):
         return Node(on_exit=Shutdown(), **kwargs)
@@ -25,6 +35,13 @@ def generate_launch_description():
         arguments=[
             csv_file_path
         ],
+    )
+    synthetic_actuation_feedback = Node(
+        package='ap1_control',
+        executable='synthetic_actuation_feedback_node',
+        name='synthetic_actuation_feedback',
+        output='screen',
+        condition=IfCondition(use_synthetic_actuation_feedback),
     )
 
     # == PLANNER NODE ==
@@ -46,12 +63,14 @@ def generate_launch_description():
         executable='yolo_node',
         name='ap1_yolo',
         output='log',
+        condition=UnlessCondition(use_synthetic_perception),
     )
     ufld_ground = CriticalNode(
         package='ap1_perception',
         executable='ufld_ground_node',
         name='ap1_ufld_ground',
         output='log',
+        condition=UnlessCondition(use_synthetic_perception),
     )
 
     # == CONSOLE NODE ==
@@ -70,11 +89,35 @@ def generate_launch_description():
                 'launch',
                 'mapping_pipeline.launch.py'
             )
-        )
+        ),
+        launch_arguments={
+            'use_synthetic_perception': use_synthetic_perception,
+            'use_synthetic_odometry': use_synthetic_odometry,
+        }.items(),
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'use_synthetic_actuation_feedback',
+            default_value='false',
+            description=(
+                'Publish fake /ap1/actuation feedback for smoke tests.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'use_synthetic_odometry',
+            default_value='false',
+            description='Forward synthetic odometry flag to mapping launch.',
+        ),
+        DeclareLaunchArgument(
+            'use_synthetic_perception',
+            default_value='false',
+            description=(
+                'Use mapping synthetic perception instead of real YOLO/UFLD.'
+            ),
+        ),
         control,
+        synthetic_actuation_feedback,
         planner,
         yolo,
         ufld_ground,
