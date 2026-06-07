@@ -1,9 +1,16 @@
 # AP1 | 2025-6
 
-This is WE Autopilot's master workspace for development.
+This is WE Autopilot's master workspace for development of the self-driving car system called AP1.
 
-To use clone then use vcs in ROS2 to pull subrepos.
-`vcs import < ap1.repos`
+For setup see SETUP.md.
 
-All teams' code is located under their folder in `src/`.
-Launch code is located in the bringup package: `src/bringup` and is tracked in THIS repository. This is the only package tracked directly in this repository.  
+## Repo Structure
+
+Under `src` find dirs for:
+- bringup (launching ap1 in ROS2)
+- msgs (communication between subsystems)
+
+As well as for each subsystem:
+- perception
+- mapping_and_localization
+- planning_and_control
