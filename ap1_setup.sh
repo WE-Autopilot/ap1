@@ -4,6 +4,42 @@
 # =============================================================================
 
 set -euo pipefail
+WRITE_RC=false
+IMPORT_REPOS=true
+
+usage() {
+    cat <<'EOF'
+Usage: ./ap1_setup.sh [options]
+
+Options:
+  --write-rc   Add ROS/AP1 source lines to ~/.bashrc, ~/.zshrc, or ~/.profile.
+               By default, setup prints the commands instead of editing shell rc.
+  --no-vcs     Do not run vcs import for missing repos.
+  -h, --help   Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --write-rc)
+            WRITE_RC=true
+            shift
+            ;;
+        --no-vcs)
+            IMPORT_REPOS=false
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -77,6 +113,37 @@ else
     PERCEPTION_DIR="$SRC_DIR/perception"
 fi
 
+
+# =============================================================================
+# 2. IMPORT MISSING WORKSPACE REPOSITORIES
+# =============================================================================
+step "Importing missing repositories from ap1.repos"
+
+if [[ ! -f "$WS_ROOT/ap1.repos" ]]; then
+    warn "ap1.repos not found at $WS_ROOT/ap1.repos - skipping vcs import"
+elif ! $IMPORT_REPOS; then
+    warn "Skipping vcs import because --no-vcs was provided"
+elif ! command -v vcs &>/dev/null; then
+    err "vcs command not found. Install with: sudo apt install python3-vcstool"
+    ERRORS=$((ERRORS+1))
+else
+    info "Importing missing repos from $WS_ROOT/ap1.repos ..."
+    (
+        cd "$WS_ROOT"
+        vcs import --skip-existing < ap1.repos
+    )
+    ok "Workspace repositories are present"
+fi
+
+# Refresh perception path after vcs import. ap1.repos paths are relative to the
+# workspace root and should normally resolve to src/perception.
+if [[ -d "$SRC_DIR/perception" ]]; then
+    PERCEPTION_DIR="$SRC_DIR/perception"
+elif [[ -d "$SRC_DIR/src/perception" ]]; then
+    PERCEPTION_DIR="$SRC_DIR/src/perception"
+else
+    PERCEPTION_DIR="$SRC_DIR/perception"
+fi
 # =============================================================================
 # 2. DETECT SHELL & RC FILE
 # =============================================================================
@@ -345,13 +412,13 @@ else
 fi
 
 # =============================================================================
-# 10. CONFIGURE SHELL RC FILE
+# 10. SHOW OPTIONAL SHELL SETUP COMMANDS
 # =============================================================================
-step "Configuring $RC_FILE"
+step "Preparing shell setup commands"
 
 WS_INSTALL_SETUP="$WS_ROOT/install/setup.bash"
-# Resolve to absolute path so the RC line works in any future shell (no variables)
-VENV_SITE_PACKAGES_ABS="$(realpath "$VENV_SITE_PACKAGES" 2>/dev/null || echo "$VENV_SITE_PACKAGES")"
+# Resolve to absolute path so the line works in any future shell (no variables)
+VENV_SITE_PACKAGES_ABS="$(realpath "${VENV_SITE_PACKAGES:-}" 2>/dev/null || echo "${VENV_SITE_PACKAGES:-}")"
 PYTHONPATH_LINE="export PYTHONPATH=$VENV_SITE_PACKAGES_ABS:\$PYTHONPATH"
 ROS_LINE="source $ROS_SETUP"
 WS_LINE="source $WS_INSTALL_SETUP"
@@ -363,16 +430,32 @@ add_to_rc() {
         ok "$label already in $RC_FILE"
     else
         echo "" >> "$RC_FILE"
-        echo "# AP1 Autopilot — added by ap1_setup.sh" >> "$RC_FILE"
+        echo "# AP1 Autopilot - added by ap1_setup.sh" >> "$RC_FILE"
         echo "$line" >> "$RC_FILE"
         ok "Added $label to $RC_FILE"
     fi
 }
 
-add_to_rc "$ROS_LINE"           "ROS2 source"
-add_to_rc "$WS_LINE"            "workspace overlay source"
-add_to_rc "$PYTHONPATH_LINE"    "perception venv PYTHONPATH"
-
+if $WRITE_RC; then
+    info "--write-rc provided; updating $RC_FILE"
+    add_to_rc "$ROS_LINE"           "ROS2 source"
+    add_to_rc "$WS_LINE"            "workspace overlay source"
+    if [[ -n "$VENV_SITE_PACKAGES_ABS" ]]; then
+        add_to_rc "$PYTHONPATH_LINE"    "perception venv PYTHONPATH"
+    fi
+else
+    warn "Not editing $RC_FILE by default"
+    echo ""
+    echo "  To use AP1 in this terminal, run:"
+    echo "  $ROS_LINE"
+    echo "  $WS_LINE"
+    if [[ -n "$VENV_SITE_PACKAGES_ABS" ]]; then
+        echo "  $PYTHONPATH_LINE"
+    fi
+    echo ""
+    echo "  To have ap1_setup.sh add these lines to $RC_FILE, rerun:"
+    echo "  ./ap1_setup.sh --write-rc"
+fi
 # =============================================================================
 # 11. FINAL VERIFICATION
 # =============================================================================
@@ -419,4 +502,8 @@ echo -e "${BOLD}  To launch the full system, open a new terminal and run:${NC}"
 echo -e "  ${CYAN}ros2 launch ap1_bringup full_system.launch.py${NC}\n"
 echo -e "${BOLD}  Or for PnC + sim only:${NC}"
 echo -e "  ${CYAN}ros2 launch ap1_bringup pnc_backend.launch.py${NC}\n"
-echo -e "  ${YELLOW}Note: Open a NEW terminal so the RC file changes take effect.${NC}\n"
+if $WRITE_RC; then
+    echo -e "  ${YELLOW}Note: Open a NEW terminal so the RC file changes take effect.${NC}\n"
+else
+    echo -e "  ${YELLOW}Note: This script did not edit your shell rc file. Source the setup commands printed above in each new terminal, or rerun with --write-rc.${NC}\n"
+fi

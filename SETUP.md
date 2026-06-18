@@ -16,6 +16,21 @@ chmod +x ap1_setup.sh
 ./ap1_setup.sh
 ```
 
+By default, the script imports any missing repos from `ap1.repos` using
+`vcs import --skip-existing`, builds the workspace, and prints the source/export
+commands to run in your terminal. It does not edit your shell rc file unless you
+opt in:
+
+```bash
+./ap1_setup.sh --write-rc
+```
+
+If you already imported the repos yourself and want setup to skip that step:
+
+```bash
+./ap1_setup.sh --no-vcs
+```
+
 # Option 2 -- Manually (If Script Doesn't Work)
 
 ---
@@ -50,11 +65,10 @@ This creates a `.venv` inside the perception folder with all pinned dependencies
 
 ## 3. Expose the Perception venv to ROS2
 
-ROS2 uses the system Python (`/usr/bin/python3`) to launch nodes — it does **not** respect the active venv automatically. You need to add the venv's site-packages to `PYTHONPATH`.
+ROS2 uses the system Python (`/usr/bin/python3`) to launch nodes, so it does **not** respect the active venv automatically. You need to add the venv's site-packages to `PYTHONPATH` in each terminal where you run AP1.
 
 ```bash
-echo 'export PYTHONPATH=/home/$USER/rest_of_path/ap1/src/perception/.venv/lib/python3.12/site-packages:$PYTHONPATH' >> ~/.zshrc
-source ~/.zshrc
+export PYTHONPATH=/home/$USER/rest_of_path/ap1/src/perception/.venv/lib/python3.12/site-packages:$PYTHONPATH
 ```
 
 > ⚠️ If your username or workspace path differs, adjust accordingly.
@@ -91,7 +105,7 @@ source /opt/ros/jazzy/setup.bash
 source ~/Documents/ap1/install/setup.bash
 ```
 
-> 💡 To avoid doing this manually every time, add both lines to your `~/.zshrc` or `~/.bashrc`:
+> 💡 To avoid doing this manually every time, add these lines to your `~/.zshrc` or `~/.bashrc`, or run `./ap1_setup.sh --write-rc`:
 > ```bash
 > echo 'source /opt/ros/jazzy/setup.bash' >> ~/.zshrc
 > echo 'source ~/Documents/ap1/install/setup.bash' >> ~/.zshrc
