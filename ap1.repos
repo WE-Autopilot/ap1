@@ -9,16 +9,6 @@ repositories:
     url: 'https://github.com/WE-Autopilot/mapping-and-localization'
     version: main
 
-  src/planning_and_control/planning:
-    type: git
-    url: 'https://github.com/WE-Autopilot/planning'
-    version: main
-      
-  src/planning_and_control/control:
-    type: git
-    url: 'https://github.com/WE-Autopilot/control'
-    version: main
-
   src/planning_and_control/console:
     type: git
     url: 'https://github.com/WE-Autopilot/console'

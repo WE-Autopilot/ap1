@@ -1,0 +1,14 @@
+# ROS2 bbgl
+build/
+install/
+log/
+
+# Cache
+.cache/
+
+# IDEs
+.idea/
+.vscode/
+
+# CMake
+compile_commands.json

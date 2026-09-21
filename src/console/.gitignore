@@ -1,0 +1,12 @@
+# ROS
+install/
+build/
+log/
+test/
+
+# Python
+.venv/
+**/__pycache__/
+
+# IDEs
+.vscode/

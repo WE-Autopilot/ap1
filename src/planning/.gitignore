@@ -1,0 +1,21 @@
+# MacOS
+**/.DS_Store
+
+# Build
+build/
+log/
+install/
+
+# Cache
+.cache/
+
+# IDEs
+.vscode/
+.idea/
+
+# CMake
+compile_commands.json
+
+# Python
+**/.venv
+**/__pycache__

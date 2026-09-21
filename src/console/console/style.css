@@ -1,0 +1,57 @@
+Screen {
+    layout: vertical;
+}
+
+DiagnosticsDisplay {
+    height: 1fr;
+    background: $surface;
+    padding: 1;
+}
+
+.header {
+    background: $accent;
+    color: $text;
+    height: 1;
+    content-align: center middle;
+    text-style: bold;
+}
+
+.pane {
+    border: solid $accent;
+    margin: 1;
+}
+
+#diagnostics_container {
+    width: 65; /* Do not touch unless you've changed visual_path width */
+    border: solid $accent;
+    margin: 1;
+}
+
+#cli_container {
+    width: 1fr;
+    border: solid $accent;
+    margin: 1;
+}
+
+#output_scroll {
+    height: 1fr;
+    background: $surface;
+    padding: 1;
+}
+
+CommandOutput {
+    height: auto;
+}
+
+#input_container {
+    height: 5;
+    width: 100%;
+    background: $panel;
+}
+
+/* Do not touch unless you've changed visual_path width */
+PathCanvas {
+    border: round white;
+    width: auto;
+    height: auto;
+}

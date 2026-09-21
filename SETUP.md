@@ -41,6 +41,7 @@ If you already imported the repos yourself and want setup to skip that step:
 mkdir -p ~/Documents/ap1
 cd ~/Documents/ap1
 
+# THIS STEP IS BEING DEPRECATED
 vcs import < ap1.repos
 ```
 
@@ -102,7 +103,7 @@ After a successful build, source the overlay. **Do this in every new terminal be
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/Documents/ap1/install/setup.bash
+source install/setup.bash
 ```
 
 > 💡 To avoid doing this manually every time, add these lines to your `~/.zshrc` or `~/.bashrc`, or run `./ap1_setup.sh --write-rc`:

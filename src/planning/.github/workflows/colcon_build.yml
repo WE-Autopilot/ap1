@@ -1,0 +1,50 @@
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    env:
+      BUILD_TYPE: Release
+      RUN_TESTS: 'true'
+
+    steps:
+      # Checkout this repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: WE-Autopilot/ap1
+          ref: main
+
+      - name: Source ROS 2 environment
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          echo "ROS 2 environment sourced"
+
+      - name: Import dependencies
+        run: |
+          mkdir -p src
+          vcs import < .repos
+
+      - name: Build planning
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build \
+          --packages-up-to ap1_planning \
+          --symlink-install \
+          --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+
+      - name: Run tests
+        if: ${{ env.RUN_TESTS == 'true' }}
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          colcon test --packages-select ap1_planning
+          colcon test-result --verbose

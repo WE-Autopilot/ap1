@@ -1,0 +1,11 @@
+planner_node:
+  ros__parameters:
+    topics:
+      lanes:         /ap1/mapping/lanes
+      odometer:      /ap1/mapping/odometer
+      entities:      /ap1/mapping/entities
+      speed:         /ap1/actuation/speed
+      state:         /ap1/planning/state
+      target_path:   /ap1/planning/target_path
+      speed_profile: /ap1/planning/speed_profile
+      target_speed:  /ap1/control/target_speed

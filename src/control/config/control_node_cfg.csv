@@ -1,0 +1,5 @@
+wheelbase,2.5
+a_max,3.0
+delta_max,0.5
+throttle_gain,1.0
+brake_gain,1.0

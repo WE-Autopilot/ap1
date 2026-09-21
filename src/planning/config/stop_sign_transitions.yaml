@@ -1,0 +1,13 @@
+transitions:
+  - from: Driving
+    event: SignDetected
+    to: Stopping
+  - from: Stopping 
+    event: HasStopped
+    to: Stopped 
+  - from: Stopped 
+    event: StopTimeElapsed
+    to: DrivingThrough
+  - from: DrivingThrough 
+    event: DriveThruDistanceCovered
+    to: Driving
