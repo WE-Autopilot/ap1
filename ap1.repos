@@ -9,6 +9,23 @@ repositories:
     url: 'https://github.com/WE-Autopilot/mapping-and-localization'
     version: main
 
+  # SLAM & Factor Graph Dependencies (Section 5.3)
+  src/external/gtsam:
+    type: git
+    url: https://github.com/borglab/gtsam.git
+    version: 4.2a9 # Use a stable tag recommended for ROS 2
+
+  src/external/LIO-SAM:
+    type: git
+    url: https://github.com/TixiaoShan/LIO-SAM.git
+    version: ros2 # Target the specific ROS 2 branch
+
+  # Scan Matching Dependencies (Section 5.4)
+  src/external/autoware_ndt:
+    type: git
+    url: https://github.com/autowarefoundation/autoware.universe.git
+    version: main # Or pin to a specific stable Autoware release tag
+
   src/planning_and_control/console:
     type: git
     url: 'https://github.com/WE-Autopilot/console'

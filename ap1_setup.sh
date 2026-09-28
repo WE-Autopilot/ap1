@@ -468,7 +468,7 @@ source "$WS_INSTALL_SETUP"
 set -u
 export PYTHONPATH="${VENV_SITE_PACKAGES_ABS:-$VENV_SITE_PACKAGES}:${PYTHONPATH:-}"
 
-PACKAGES=(ap1_msgs ap1_bringup ap1_control ap1_planning ap1_perception ap1_console mapping_localization_python)
+PACKAGES=(ap1_msgs ap1_bringup ap1_control ap1_planning ap1_perception ap1_console Mapping Localization)
 for pkg in "${PACKAGES[@]}"; do
     if ros2 pkg prefix "$pkg" &>/dev/null; then
         ok "$pkg found"

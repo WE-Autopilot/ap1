@@ -4,6 +4,16 @@ src/planning_and_control/
 src/mapping_and_localization/
 src/msgs
 
+# External Dependencies (Managed by ap1.repos)
+src/external/
+
+# Mapping & Sensor Data (Section 5.3)
+*.bag          # Legacy ROS 1 bags or loose bag files
+*.db3          # ROS 2 rosbag2 dataset files
+*.pcd          # 3D geometric voxel maps (50MB)
+*.osm          # Lanelet2 semantic XML maps[cite: 2]
+waypoints.csv  # Simplified semantic coordinate lists[cite: 2]
+
 # build artifacts
 build/
 install/
@@ -12,3 +22,8 @@ log/
 # Python things
 **/.venv/
 .vscode
+__pycache__/
+*.pyc
+
+# OS generated files
+.DS_Store
