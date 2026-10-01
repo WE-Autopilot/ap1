@@ -1,7 +1,4 @@
-# ignore vcs repos
-src/perception/
-src/planning_and_control/
-src/mapping_and_localization/
+# vcs repos, to msgs to be deleted
 src/msgs
 
 # External Dependencies (Managed by ap1.repos)

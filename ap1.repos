@@ -1,9 +1,4 @@
 repositories:
-  src/perception:
-    type: git
-    url: 'https://github.com/WE-Autopilot/perception'
-    version: main
-
   src/mapping_and_localization:
     type: git
     url: 'https://github.com/WE-Autopilot/mapping-and-localization'
