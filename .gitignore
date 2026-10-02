@@ -1,6 +1,5 @@
 # ignore vcs repos
 src/perception/
-src/planning_and_control/
 src/mapping_and_localization/
 src/msgs
 
