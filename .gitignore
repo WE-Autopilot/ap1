@@ -1,4 +1,4 @@
-# vcs repos, to msgs to be deleted
+# msgs to be deleted
 src/msgs
 
 # External Dependencies (Managed by ap1.repos)
