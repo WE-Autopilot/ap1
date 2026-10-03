@@ -1,6 +1,7 @@
 [project]
-name = "perception"
-version = "0.1.0"
+name = "ap1_perception"
+version = "0.1.1"
+dynamic = ["license", "maintainers", "scripts", "optional-dependencies"]
 description = "Main repository for perception team code"
 readme = "README.md"
 requires-python = ">=3.12.3"
