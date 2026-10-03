@@ -21,6 +21,7 @@ log/
 .vscode
 __pycache__/
 *.pyc
+*.egg-info/
 
 # OS generated files
 .DS_Store
