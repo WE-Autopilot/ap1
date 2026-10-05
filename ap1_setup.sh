@@ -144,6 +144,14 @@ elif [[ -d "$SRC_DIR/src/perception" ]]; then
 else
     PERCEPTION_DIR="$SRC_DIR/perception"
 fi
+
+# Hotfix LIO-SAM for ROS 2 Jazzy Eigen3 compatibility
+echo "Applying Eigen3 patch to LIO-SAM..."
+sed -i 's/find_package(Eigen REQUIRED)/find_package(Eigen3 REQUIRED)/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
+sed -i 's/Eigen_INCLUDE_DIRS/Eigen3_INCLUDE_DIRS/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
+sed -i 's/EIGEN3_INCLUDE_DIR/Eigen3_INCLUDE_DIRS/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
+sed -i '/ament_target_dependencies/s/Eigen/Eigen3/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
+
 # =============================================================================
 # 2. DETECT SHELL & RC FILE
 # =============================================================================
@@ -395,7 +403,21 @@ BUILD_OK=false
     set +u  # ROS2 setup.bash uses unbound vars (AMENT_TRACE_SETUP_FILES)
     source "$ROS_SETUP"
     set -u
-    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1 | \
+    colcon build --symlink-install \
+    --packages-up-to \
+        ap1_msgs \
+        ap1_bringup \
+        ap1_control \
+        ap1_planning \
+        ap1_console \
+        ap1_localization \
+        ap1_mapping \
+        lio_sam \
+    --cmake-args \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TESTING=OFF \
+        -DPython3_EXECUTABLE=/usr/bin/python3 \
+        -DGTSAM_USE_SYSTEM_EIGEN=ON 2>&1 | \
         tee /tmp/ap1_colcon_build.log | \
         grep -E "(Starting|Finished|Failed|Error|error:|warning:)" || true
     exit "${PIPESTATUS[0]}"
@@ -466,9 +488,10 @@ set +u
 source "$ROS_SETUP"
 source "$WS_INSTALL_SETUP"
 set -u
-export PYTHONPATH="${VENV_SITE_PACKAGES_ABS:-$VENV_SITE_PACKAGES}:${PYTHONPATH:-}"
+#Default to empty if not set
+export PYTHONPATH="${VENV_SITE_PACKAGES_ABS:-${VENV_SITE_PACKAGES:-}}:${PYTHONPATH:-}" 
 
-PACKAGES=(ap1_msgs ap1_bringup ap1_control ap1_planning ap1_perception ap1_console Mapping Localization)
+PACKAGES=(ap1_msgs ap1_bringup ap1_control ap1_planning ap1_perception ap1_console ap1_localization ap1_mapping)
 for pkg in "${PACKAGES[@]}"; do
     if ros2 pkg prefix "$pkg" &>/dev/null; then
         ok "$pkg found"
