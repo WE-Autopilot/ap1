@@ -1,0 +1,2 @@
+# for lfs stuff
+*.onnx filter=lfs diff=lfs merge=lfs -text

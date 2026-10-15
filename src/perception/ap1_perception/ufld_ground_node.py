@@ -1,0 +1,172 @@
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import CameraInfo, Image, PointCloud, PointCloud2, ChannelFloat32
+from geometry_msgs.msg import Point32, Point
+from shape_msgs.msg import Plane as PlaneMsg
+from message_filters import Subscriber, ApproximateTimeSynchronizer
+from cv_bridge import CvBridge
+import sensor_msgs_py.point_cloud2 as pc2
+
+from ap1_msgs.msg import LaneBoundaries
+
+from .ufld import UFLDONNX
+from .ransac import GroundRANSAC
+from .projection import ground_proj
+
+"""
+Perception lane detection (model = ultra fast lane detection v2) and ground plane (ransac) ROS2 node.
+"""
+
+DEPTH_TOPIC = "camera/camera/aligned_depth_to_color/image_raw"
+COLOR_TOPIC = "camera/camera/color/image_raw"
+PC_TOPIC    = "/camera/camera/depth/color/points"
+INFO_TOPIC  = "camera/camera/aligned_depth_to_color/camera_info"
+
+LANE_TOPIC  = "ap1/perception/lanes"
+PLANE_TOPIC = "ap1/perception/ground_plane"
+
+
+def cam_optical_to_base_link(pts_cam: np.ndarray) -> np.ndarray:
+    # ROS camera optical (+X right, +Y down, +Z forward) -> base_link (+X fwd, +Y left, +Z up).
+    # Pure rotation; assumes camera is mounted straight ahead with no roll/pitch/yaw offset.
+    x_cam, y_cam, z_cam = pts_cam[:, 0], pts_cam[:, 1], pts_cam[:, 2]
+    return np.stack([z_cam, -x_cam, -y_cam], axis=-1)
+
+
+class UfldGroundNode(Node):
+    def __init__(self):
+        super().__init__('ap1_perception_ufld_ground')
+
+        self._bridge = CvBridge()
+        self._K: np.ndarray | None = None
+        self._model: UFLDONNX | None = None
+        self._ransac = GroundRANSAC()
+
+        self._lane_pub = self.create_publisher(LaneBoundaries, LANE_TOPIC, 10)
+        self._plane_pub = self.create_publisher(PlaneMsg, PLANE_TOPIC, 10)
+
+        self.create_subscription(CameraInfo, INFO_TOPIC, self._camera_info_callback, 10)
+
+        color_sub = Subscriber(self, Image, COLOR_TOPIC)
+        pc_sub = Subscriber(self, PointCloud2, PC_TOPIC)
+        self._sync = ApproximateTimeSynchronizer(
+            [color_sub, pc_sub], queue_size=5, slop=0.05
+        )
+        self._sync.registerCallback(self._sync_callback)
+
+    def _camera_info_callback(self, msg: CameraInfo) -> None:
+        if self._K is not None:
+            return
+        self._K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
+        self._model = UFLDONNX(ori_size=(msg.width, msg.height))
+
+        self.get_logger().info(f"UFLD model initialized with image size ({msg.width}, {msg.height}).")
+
+    def _sync_callback(self, color_msg: Image, pc_msg: PointCloud2) -> None:
+        if self._K is None or self._model is None:
+            return
+
+        # --- Ground plane estimation via RANSAC ---
+        xyz = pc2.read_points_numpy(
+            pc_msg, field_names=('x', 'y', 'z'), skip_nans=True
+        ).astype(np.float32)
+
+        if xyz.shape[0] == 0:
+            return
+
+        plane = self._ransac(xyz)
+
+        # Publish ground plane: ax + by + cz + d = 0 → d = -(n · p)
+        plane_msg = PlaneMsg()
+        plane_msg.coef[0] = float(plane.normal[0])
+        plane_msg.coef[1] = float(plane.normal[1])
+        plane_msg.coef[2] = float(plane.normal[2])
+        plane_msg.coef[3] = float(-np.dot(plane.normal, plane.point))
+        self._plane_pub.publish(plane_msg)
+
+        # --- UFLD lane detection ---
+        frame = self._bridge.imgmsg_to_cv2(color_msg, desired_encoding='rgb8')
+        smooth_coords, lane_exists = self._model(frame)
+
+        # aly edit
+        # swapping PointCloud out for LaneBoundaries
+        # === START LANEBOUNDARIES
+        lane_boundaries_msg = self.create_lane_boundaries_message(
+                zip(smooth_coords, lane_exists), plane
+        )
+        if lane_boundaries_msg is not None:
+            self._lane_pub.publish(lane_boundaries_msg)
+        else:
+            print("Your lane boundaries are null twin")
+        return
+        # === END LANEBOUNDARIES
+        # this is the other Pointcloud code
+
+        #cloud = PointCloud()
+        #cloud.header = color_msg.header
+        #lane_id_channel = ChannelFloat32(name='lane_id', values=[])
+
+        #for lane_idx, (lane_coords, exists) in enumerate(zip(smooth_coords, lane_exists)):
+        #    if not exists:
+        #        continue
+
+        #    # lanes in pixel coords
+        #    lane_px = np.array(lane_coords, dtype=np.float64)
+        #    # lanes in 3d coords - post projection
+        #    pts_3d = ground_proj(self._K, lane_px, plane)
+
+        #    for pt in pts_3d:
+        #        cloud.points.append(Point32(
+        #            x=float(pt[0]), y=float(pt[1]), z=float(pt[2])
+        #        ))
+        #        lane_id_channel.values.append(float(lane_idx))
+
+        #cloud.channels.append(lane_id_channel)
+        #self._lane_pub.publish(cloud)
+
+    def create_lane_boundaries_message(self, lanes, plane):
+        lanes = list(lanes) # materialise the zip iterator
+
+        # UFLDONNX.pred2coords returns [outer-left, inner-left, inner-right, outer-right];
+        # the ego-lane boundaries are indices 1 and 2.
+        left_coords, left_exists = lanes[1]
+        if not left_exists:
+            return None
+        right_coords, right_exists = lanes[2]
+        if not right_exists:
+            return None
+
+        # lanes in pixel coords
+        left_lane_px = np.array(left_coords, dtype=np.float64)
+        right_lane_px = np.array(right_coords, dtype=np.float64)
+
+        # lanes in camera-optical 3d coords (+X right, +Y down, +Z forward)
+        left_pts_cam = ground_proj(self._K, left_lane_px, plane)
+        right_pts_cam = ground_proj(self._K, right_lane_px, plane)
+
+        # Rotate into base_link (+X forward, +Y left, +Z up). TODO: add the camera's
+        # mounting translation (x forward of rear axle, z mount height) once known.
+        left_pts_3d = cam_optical_to_base_link(left_pts_cam)
+        right_pts_3d = cam_optical_to_base_link(right_pts_cam)
+
+        # assemble LaneBoundaries
+        msg = LaneBoundaries()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'base_link'
+
+        msg.left = [Point(x=float(pt[0]), y=float(pt[1]), z=float(pt[2])) for pt in left_pts_3d]
+        msg.right = [Point(x=float(pt[0]), y=float(pt[1]), z=float(pt[2])) for pt in right_pts_3d]
+
+        return msg
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = UfldGroundNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
