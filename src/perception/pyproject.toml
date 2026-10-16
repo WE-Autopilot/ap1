@@ -4,7 +4,6 @@ version = "0.1.1"
 dynamic = ["license", "maintainers", "scripts", "optional-dependencies"]
 description = "Main repository for perception team code"
 readme = "README.md"
-requires-python = ">=3.12.3"
 dependencies = [
     "cv-bridge>=1.13.0.post0",
     "ipython>=9.10.0",
