@@ -146,11 +146,39 @@ else
 fi
 
 # Hotfix LIO-SAM for ROS 2 Jazzy Eigen3 compatibility
-echo "Applying Eigen3 patch to LIO-SAM..."
-sed -i 's/find_package(Eigen REQUIRED)/find_package(Eigen3 REQUIRED)/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
-sed -i 's/Eigen_INCLUDE_DIRS/Eigen3_INCLUDE_DIRS/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
-sed -i 's/EIGEN3_INCLUDE_DIR/Eigen3_INCLUDE_DIRS/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
-sed -i '/ament_target_dependencies/s/Eigen/Eigen3/g' "$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
+LIO_SAM_CMAKE="$WS_ROOT/src/external/LIO-SAM/CMakeLists.txt"
+if [[ -f "$LIO_SAM_CMAKE" ]]; then
+    echo "Applying Eigen3 patch to LIO-SAM..."
+    sed -i 's/find_package(Eigen REQUIRED)/find_package(Eigen3 REQUIRED)/g' "$LIO_SAM_CMAKE"
+    sed -i 's/Eigen_INCLUDE_DIRS/Eigen3_INCLUDE_DIRS/g' "$LIO_SAM_CMAKE"
+    sed -i 's/EIGEN3_INCLUDE_DIR/Eigen3_INCLUDE_DIRS/g' "$LIO_SAM_CMAKE"
+    # \b keeps this idempotent: it won't turn an existing "Eigen3" into "Eigen33" on rerun.
+    sed -i '/ament_target_dependencies/s/\bEigen\b/Eigen3/g' "$LIO_SAM_CMAKE"
+    # LIO-SAM's CMakeLists needs cv_bridge but its package.xml doesn't declare
+    # it, so rosdep wouldn't install it on a ros-base (non-desktop) install.
+    LIO_SAM_XML="$WS_ROOT/src/external/LIO-SAM/package.xml"
+    if ! grep -q "<depend>cv_bridge</depend>" "$LIO_SAM_XML"; then
+        sed -i 's|^\( *\)<build_depend>gtsam</build_depend>|&\n\1<depend>cv_bridge</depend>|' "$LIO_SAM_XML"
+    fi
+else
+    err "LIO-SAM not found at src/external/LIO-SAM (vcs import failed?)"
+    ERRORS=$((ERRORS+1))
+fi
+
+# Repos that used to be in ap1.repos. vcs import never deletes old clones, so
+# exclude them from the build; otherwise the old source GTSAM would shadow the
+# apt one, and autoware.universe (~250 packages) would be compiled.
+#   gtsam               -> now ros-jazzy-gtsam (apt, via LIO-SAM's rosdep key)
+#   autoware_ndt        -> autoware.universe has no NDT; now ros-jazzy-autoware-ndt-scan-matcher
+#   tier4_autoware_msgs -> was only needed by autoware.universe
+for removed in gtsam autoware_ndt tier4_autoware_msgs; do
+    if [[ -d "$WS_ROOT/src/external/$removed" ]]; then
+        if [[ ! -f "$WS_ROOT/src/external/$removed/COLCON_IGNORE" ]]; then
+            echo "Placed by ap1_setup.sh: no longer in ap1.repos, safe to delete." > "$WS_ROOT/src/external/$removed/COLCON_IGNORE"
+        fi
+        warn "src/external/$removed is no longer used and is excluded from the build. Delete it with: rm -rf src/external/$removed"
+    fi
+done
 
 # =============================================================================
 # 2. DETECT SHELL & RC FILE
@@ -367,7 +395,14 @@ else
                 --skip-keys "$SKIP_KEYS"
         )
     }
-    ok "rosdep install complete"
+    # -r above keeps going past failures, so confirm everything really is
+    # installed (e.g. ros-jazzy-gtsam, ros-jazzy-autoware-ndt-scan-matcher).
+    if (cd "$WS_ROOT" && rosdep check --from-paths src --ignore-src --skip-keys "$SKIP_KEYS"); then
+        ok "rosdep install complete - all system dependencies satisfied"
+    else
+        err "Some system dependencies are still missing (listed above); the build will likely fail"
+        ERRORS=$((ERRORS+1))
+    fi
 fi
 
 # =============================================================================
@@ -403,23 +438,34 @@ BUILD_OK=false
     set +u  # ROS2 setup.bash uses unbound vars (AMENT_TRACE_SETUP_FILES)
     source "$ROS_SETUP"
     set -u
-    colcon build --symlink-install \
-    --packages-up-to \
-        ap1_msgs \
-        ap1_bringup \
-        ap1_control \
-        ap1_planning \
-        ap1_console \
-        ap1_localization \
-        ap1_mapping \
-        lio_sam \
-    --cmake-args \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_TESTING=OFF \
-        -DPython3_EXECUTABLE=/usr/bin/python3 \
-        -DGTSAM_USE_SYSTEM_EIGEN=ON 2>&1 | \
+    # colcon never removes build output of packages that left the workspace.
+    # A leftover install/gtsam (old source build) would shadow the apt GTSAM.
+    CURRENT_PKGS=" $(colcon list --names-only 2>/dev/null | tr '\n' ' ') "
+    # If listing failed, skip cleanup rather than treat every package as stale.
+    [[ "$CURRENT_PKGS" == *[a-z]* ]] || CURRENT_PKGS=""
+    REMOVED_STALE=false
+    for pkg_dir in install/*/; do
+        [[ -n "$CURRENT_PKGS" ]] || break
+        [[ -d "$pkg_dir" ]] || continue
+        pkg="$(basename "$pkg_dir")"
+        if [[ "$CURRENT_PKGS" != *" $pkg "* ]]; then
+            echo "  Removing stale build output for '$pkg' (no longer in the workspace)"
+            rm -rf "build/$pkg" "install/$pkg"
+            REMOVED_STALE=true
+        fi
+    done
+    # Packages that used a removed one (e.g. lio_sam -> source gtsam) still
+    # have its old path in their CMake cache, so reconfigure everything once.
+    if $REMOVED_STALE; then
+        echo "  Clearing build/ so remaining packages reconfigure against the new dependencies"
+        rm -rf build
+    fi
+    # Plain `colcon build`, exactly what everyone runs by hand: per-package
+    # flags live in colcon.meta. Don't add --symlink-install here; switching
+    # between symlink and non-symlink builds breaks the existing build/ dir.
+    colcon build 2>&1 | \
         tee /tmp/ap1_colcon_build.log | \
-        grep -E "(Starting|Finished|Failed|Error|error:|warning:)" || true
+        { grep -E "(Starting|Finished|Failed|Error|error:|warning:)" || true; }
     exit "${PIPESTATUS[0]}"
 ) && BUILD_OK=true
 

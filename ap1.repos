@@ -1,27 +1,17 @@
 repositories:
-  # SLAM & Factor Graph Dependencies (Section 5.3)
-  src/external/gtsam:
-    type: git
-    url: https://github.com/borglab/gtsam.git
-    version: 4.2a9 # Use a stable tag recommended for ROS 2
+  # Source-built dependencies only. Everything else comes from apt via rosdep
+  # (declared in each package.xml), e.g. GTSAM (ros-jazzy-gtsam, needed by
+  # LIO-SAM) and Autoware NDT (ros-jazzy-autoware-ndt-scan-matcher, used by
+  # ap1_localization). Both have amd64 and arm64 binaries.
 
+  # SLAM / map building (Section 5.3). Pinned to a commit so every machine
+  # builds the same code; ap1_setup.sh patches its CMakeLists for Jazzy.
   src/external/LIO-SAM:
     type: git
     url: https://github.com/TixiaoShan/LIO-SAM.git
-    version: ros2 # Target the specific ROS 2 branch
-
-  # Scan Matching Dependencies (Section 5.4)
-  src/external/autoware_ndt:
-    type: git
-    url: https://github.com/autowarefoundation/autoware.universe.git
-    version: main # Or pin to a specific stable Autoware release tag
+    version: 08af3f32f01725372d4269838dc44c19c6d9e76b # ros2 branch, 2025-02-14
 
   src/msgs:
     type: git
     url: 'https://github.com/WE-Autopilot/ap1_msgs'
     version: main
-
-  src/external/tier4_autoware_msgs:
-    type: git
-    url: https://github.com/tier4/tier4_autoware_msgs.git
-    version: tier4/universe
