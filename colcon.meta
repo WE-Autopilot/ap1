@@ -1,0 +1,22 @@
+{
+    "names": {
+        "lio_sam": {
+            "cmake-args": ["-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF", "-DPython3_EXECUTABLE=/usr/bin/python3"]
+        },
+        "ap1_msgs": {
+            "cmake-args": ["-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF", "-DPython3_EXECUTABLE=/usr/bin/python3"]
+        },
+        "ap1_control": {
+            "cmake-args": ["-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF", "-DPython3_EXECUTABLE=/usr/bin/python3"]
+        },
+        "ap1_planning": {
+            "cmake-args": ["-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF", "-DPython3_EXECUTABLE=/usr/bin/python3"]
+        },
+        "ap1_localization": {
+            "cmake-args": ["-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF", "-DPython3_EXECUTABLE=/usr/bin/python3"]
+        },
+        "ap1_mapping": {
+            "cmake-args": ["-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF", "-DPython3_EXECUTABLE=/usr/bin/python3"]
+        }
+    }
+}
