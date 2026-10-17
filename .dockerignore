@@ -1,0 +1,30 @@
+# Keep the perception image build context focused on what the Dockerfile copies.
+.git/
+.github/
+.vscode/
+build/
+install/
+log/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/.pytest_cache/
+
+# Other AP1 subsystems are not part of the perception image.
+src/bringup/
+src/console/
+src/control/
+src/localization/
+src/mapping/
+src/planning/
+src/external/
+src/msgs/
+
+# Local tooling not needed in the image.
+src/perception/tools/
+scripts/
+*.md
+!docker/perception/README.md
+!src/perception/README.md
+!SETUP.md
+!README.md

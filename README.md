@@ -4,6 +4,14 @@ This is WE Autopilot's master workspace for development of the self-driving car 
 
 For setup see SETUP.md.
 
+To run perception in Docker (build + launch in one step):
+
+```bash
+./scripts/launch_perception_container.sh
+```
+
+Details: [docker/perception/README.md](docker/perception/README.md).
+
 ## Repo Structure
 
 Under `src` find dirs for:
