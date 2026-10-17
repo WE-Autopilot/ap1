@@ -142,6 +142,24 @@ ros2 launch mapping_localization_python mapping_pipeline.launch.py use_synthetic
 ros2 run ap1_console console
 ```
 
+### Perception container (Docker)
+
+One command builds the perception image and launches YOLO + UFLD/ground:
+
+```bash
+./scripts/launch_perception_container.sh
+```
+
+See [docker/perception/README.md](docker/perception/README.md) for Compose options,
+environment variables, and an interactive shell. Paths inside the container are
+resolved dynamically (no hard-coded host home directories).
+
+Native (non-container) perception launch:
+
+```bash
+ros2 launch ap1_perception perception.launch.py
+```
+
 ---
 
 ## 7. Replay a Recorded RealSense Bag
