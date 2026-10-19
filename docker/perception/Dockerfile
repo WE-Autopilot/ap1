@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# System tooling: git/curl for fetch, python3-pip/vcstool/colcon for workspace build.
+# System tooling for fetch + workspace build. ros-dev-tools brings colcon/vcs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         git \
@@ -21,15 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-dev-tools \
     && rm -rf /var/lib/apt/lists/*
 
-# uv (pinned installer channel; binary lands in ~/.local/bin)
+# uv for the perception Python environment (lockfile-driven).
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# colcon + vcstool on system Python (outside the perception venv)
-RUN pip3 install --break-system-packages --no-cache-dir \
-        "colcon-common-extensions" \
-        "vcstool" \
-        "empy==3.3.4"
+# empy 3.x is required by ROS IDL generation; 4.x breaks colcon/rosidl.
+RUN pip3 install --break-system-packages --no-cache-dir "empy==3.3.4"
 
 WORKDIR ${AP1_WS}
 
@@ -39,7 +36,7 @@ RUN mkdir -p src \
     && git clone --depth 1 --branch "${AP1_MSGS_REF}" \
         https://github.com/WE-Autopilot/ap1_msgs.git src/msgs
 
-# Perception package (includes pyproject.toml, uv.lock, package.xml, models).
+# Perception package (pyproject.toml, uv.lock, package.xml, models).
 COPY src/perception src/perception
 
 # Resolve Python deps with uv (frozen lockfile) into a local .venv.
@@ -58,8 +55,7 @@ RUN apt-get update \
         --skip-keys="ap1_perception ultralytics onnxruntime opencv-python torch pyqt5 pyqt6 python3-pyqt6" \
     && rm -rf /var/lib/apt/lists/*
 
-# Build only what perception needs. Use a normal (non-symlink) install so the
-# image remains valid after build/ is removed for size.
+# Normal (non-symlink) install so removing build/ leaves a valid image.
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh \
     && colcon build \
         --packages-up-to ap1_perception \
@@ -70,8 +66,7 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh \
 ENV AP1_PERCEPTION_VENV=${AP1_WS}/src/perception/.venv \
     ROS_DOMAIN_ID=0
 
-COPY docker/perception/entrypoint.sh /usr/local/bin/ap1-perception-entrypoint
-RUN chmod +x /usr/local/bin/ap1-perception-entrypoint
+COPY --chmod=755 docker/perception/entrypoint.sh /usr/local/bin/ap1-perception-entrypoint
 
 WORKDIR ${AP1_WS}
 ENTRYPOINT ["/usr/local/bin/ap1-perception-entrypoint"]

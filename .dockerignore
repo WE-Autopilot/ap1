@@ -20,11 +20,7 @@ src/planning/
 src/external/
 src/msgs/
 
-# Local tooling not needed in the image.
+# Local tooling / docs not copied into the image.
 src/perception/tools/
 scripts/
 *.md
-!docker/perception/README.md
-!src/perception/README.md
-!SETUP.md
-!README.md
