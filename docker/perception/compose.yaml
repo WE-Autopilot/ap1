@@ -1,0 +1,29 @@
+# Perception container service. From the workspace root:
+#   docker compose -f docker/perception/compose.yaml up --build
+# Or use the helper: ./scripts/launch_perception_container.sh
+
+name: ap1-perception
+
+services:
+  perception:
+    image: ap1-perception:local
+    build:
+      context: ../..
+      dockerfile: docker/perception/Dockerfile
+      args:
+        AP1_MSGS_REF: main
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      AP1_PERCEPTION_VENV: /opt/ap1/src/perception/.venv
+    # Host networking is the usual Linux ROS 2 DDS setup. On Docker Desktop
+    # (macOS/Windows) host mode is ignored; use the default bridge instead and
+    # keep ROS_DOMAIN_ID aligned with other participants on the same Docker network.
+    network_mode: ${AP1_DOCKER_NETWORK_MODE:-bridge}
+    ipc: host
+    stdin_open: true
+    tty: true
+    # Optional: mount a host workspace over the baked sources for iterative work.
+    # volumes:
+    #   - ../..:/opt/ap1:rw
+    command: ["ros2", "launch", "ap1_perception", "perception.launch.py"]

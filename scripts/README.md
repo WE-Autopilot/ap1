@@ -4,6 +4,9 @@ This is for scripts.
 
 `perception_setup.sh` is for getting perceptions dependencies in order. If on a fresh machine run it. Must be ubuntu.
 
+`launch_perception_container.sh` builds the `ap1-perception` Docker image and
+starts the perception nodes (see `docker/perception/`).
+
 ## Software smoke test
 
 `software_smoke_test.sh` validates the AP1 software stack up to the hardware
