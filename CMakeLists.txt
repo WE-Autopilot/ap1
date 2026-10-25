@@ -18,6 +18,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "msg/EntityStateArray.msg"
     "msg/SpeedProfileStamped.msg"
     "msg/LaneBoundaries.msg"
+    "msg/ObjectClass.msg"
     "srv/CreateStoredPoint.srv"
     "srv/DeleteStoredPoint.srv"
     "srv/LookupStoredPoint.srv"
