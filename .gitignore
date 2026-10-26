@@ -22,3 +22,7 @@ __pycache__/
 
 # OS generated files
 .DS_Store
+
+# Mounted into containers by ./ap1d (see docker/README.md)
+/models/
+/bags/
