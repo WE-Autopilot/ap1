@@ -1,0 +1,43 @@
+name: colcon build
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          rosdep update --rosdistro jazzy
+          rosdep install --from-paths . --ignore-src --rosdistro jazzy -y
+
+      - name: Build ap1_msgs
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --event-handlers console_cohesion+ \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
