@@ -1,3 +1,5 @@
+name: colcon build
+
 on:
   workflow_dispatch: {}
   push:
@@ -7,27 +9,35 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base
+    timeout-minutes: 20
 
-    env:
-      BUILD_TYPE: Release
-      RUN_TESTS: 'true'
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      # Checkout this repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Source ROS 2 environment
+      - name: Install dependencies
         run: |
-          source /opt/ros/jazzy/setup.bash
-          echo "ROS 2 environment sourced"
+          apt-get update
+          rosdep update --rosdistro jazzy
+          rosdep install --from-paths . --ignore-src --rosdistro jazzy -y
 
       - name: Build ap1_msgs
         run: |
           source /opt/ros/jazzy/setup.bash
-          colcon build \
-          --symlink-install \
-          --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          colcon build --event-handlers console_cohesion+ \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
