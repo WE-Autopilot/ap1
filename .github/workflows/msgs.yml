@@ -1,13 +1,20 @@
-name: colcon build
+# Builds ap1_msgs (src/msgs). Moved here from the ap1-msgs repo (its PR #10).
+name: ap1_msgs build
 
 on:
   workflow_dispatch: {}
   push:
     branches:
       - main
+    paths:
+      - "src/msgs/**"
+      - ".github/workflows/msgs.yml"
   pull_request:
     branches:
       - main
+    paths:
+      - "src/msgs/**"
+      - ".github/workflows/msgs.yml"
 
 permissions:
   contents: read
@@ -34,10 +41,10 @@ jobs:
         run: |
           apt-get update
           rosdep update --rosdistro jazzy
-          rosdep install --from-paths . --ignore-src --rosdistro jazzy -y
+          rosdep install --from-paths src/msgs --ignore-src --rosdistro jazzy -y
 
       - name: Build ap1_msgs
         run: |
           source /opt/ros/jazzy/setup.bash
-          colcon build --event-handlers console_cohesion+ \
+          colcon build --base-paths src/msgs --event-handlers console_cohesion+ \
             --cmake-args -DCMAKE_BUILD_TYPE=Release

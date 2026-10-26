@@ -34,4 +34,7 @@ ament_target_dependencies(
 ...
 ```
 
-You can find examples of using ap1_msgs in other packages in https://github.com/WE-Autopilot/planning and https://github.com/WE-Autopilot/control.
+You can find examples of using ap1_msgs in `src/planning` and `src/control`.
+
+This package used to live in the separate WE-Autopilot/ap1-msgs repo; its history was
+imported along with it (see the "Import ap1-msgs into src/msgs" commit).

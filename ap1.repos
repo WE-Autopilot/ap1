@@ -10,8 +10,3 @@ repositories:
     type: git
     url: https://github.com/TixiaoShan/LIO-SAM.git
     version: 08af3f32f01725372d4269838dc44c19c6d9e76b # ros2 branch, 2025-02-14
-
-  src/msgs:
-    type: git
-    url: 'https://github.com/WE-Autopilot/ap1_msgs'
-    version: main
