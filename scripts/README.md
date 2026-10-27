@@ -2,8 +2,6 @@
 
 This is for scripts.
 
-`perception_setup.sh` is for getting perceptions dependencies in order. If on a fresh machine run it. Must be ubuntu.
-
 ## Software smoke test
 
 `software_smoke_test.sh` validates the AP1 software stack up to the hardware
