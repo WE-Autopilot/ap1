@@ -1,0 +1,26 @@
+# Dev containers: each extends its module's service, swaps in the dev image,
+# mounts the module's source and idles so you can shell in and build.
+
+services:
+  #################### PERCEPTION ####################
+  perception-dev:
+    extends:
+      file: docker-compose.yaml
+      service: perception
+    profiles: [perception-dev]
+    image: ${AP1_REGISTRY:?run through ./ap1d}/perception:${AP1_VARIANT:?run through ./ap1d}-dev
+    volumes:
+      - ../src/perception:/ws/src/perception
+      # Hide the native-setup pyproject.toml: its [project] table breaks
+      # colcon builds (see docker/perception.Dockerfile)
+      - ../docker/config/pyproject-mask.toml:/ws/src/perception/pyproject.toml:ro
+      # Named volumes keep incremental colcon builds across container restarts
+      - perception-build:/ws/build
+      - perception-install:/ws/install
+      - perception-log:/ws/log
+    command: sleep infinity
+
+volumes:
+  perception-build:
+  perception-install:
+  perception-log:

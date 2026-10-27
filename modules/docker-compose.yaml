@@ -1,0 +1,46 @@
+# AP1 module services: how each module runs on the car and in integration tests.
+# Images are built by docker/docker-bake.hcl. Run through ./ap1d, which sets:
+#
+#   AP1_REGISTRY   image registry prefix
+#   AP1_VARIANT    cpu | gpu    which image variant to run
+#   AP1_DEVICE     cpu | cuda   inference device; cuda fails loudly without a GPU
+#   AP1_UID/GID    host user and group the containers run as
+#
+# Overrides layered on top by ./ap1d:
+#   docker-compose.dev.yaml   dev containers (source mounted, built inside)
+#   docker-compose.gpu.yaml   GPU access, only with --gpu
+
+name: ap1
+
+x-ros: &ros
+  init: true
+  # ROS 2 discovery and shared-memory transport between containers and the host
+  network_mode: host
+  ipc: host
+  # Run as the host user. Fast DDS shared memory does not work between root and
+  # non-root processes, so a root container would see native nodes' topics but
+  # never exchange data with them.
+  # TODO: once every module runs in Docker, drop this (and ROS_HOME below) and run
+  # deploy containers as root like WATonomous. Needed only while native nodes remain.
+  user: "${AP1_UID:?run through ./ap1d}:${AP1_GID:?run through ./ap1d}"
+  environment:
+    # Writable for any UID; the host UID may have no home in the image
+    - ROS_HOME=/tmp/ros
+    - ROS_DOMAIN_ID
+    - RMW_IMPLEMENTATION
+    - ROS_AUTOMATIC_DISCOVERY_RANGE
+
+services:
+  #################### PERCEPTION ####################
+  perception:
+    <<: *ros
+    profiles: [perception]
+    image: ${AP1_REGISTRY:?run through ./ap1d}/perception:${AP1_VARIANT:?run through ./ap1d}
+    volumes:
+      - ../models:/opt/ap1/models:ro
+      - ../bags:/ws/bags
+    command: >
+      ros2 launch ap1_perception yolo.launch.py
+      model_path:=/opt/ap1/models/yolo11n.onnx
+      device:=${AP1_DEVICE:?run through ./ap1d}
+  # TODO: Add other modules if/when they employ docker e.g. planning, control, mapping, localization

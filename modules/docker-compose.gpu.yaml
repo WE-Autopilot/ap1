@@ -1,0 +1,8 @@
+# GPU access for modules that use it. ./ap1d adds this file with --gpu.
+# Needs the NVIDIA driver and NVIDIA Container Toolkit on the host.
+
+services:
+  perception:
+    gpus: all
+  perception-dev:
+    gpus: all
