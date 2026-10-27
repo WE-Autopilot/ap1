@@ -74,6 +74,11 @@ export AP1_VARIANT="$VARIANT" AP1_DEVICE="$DEVICE"
 # Containers run as the host user (see modules/docker-compose.yaml)
 export AP1_UID="$(id -u)" AP1_GID="$(id -g)"
 export AP1_REGISTRY="${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}"
+# Keep ROS 2 discovery on this machine unless told otherwise, so people sharing
+# a network (e.g. campus Wi-Fi) never see each other's topics. Containers use
+# host networking, so they still reach each other and native nodes. Export
+# ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET to talk to other machines (car, laptops).
+export ROS_AUTOMATIC_DISCOVERY_RANGE="${ROS_AUTOMATIC_DISCOVERY_RANGE:-LOCALHOST}"
 
 compose() {
     local files=(-f "$ROOT/modules/docker-compose.yaml" -f "$ROOT/modules/docker-compose.dev.yaml")
@@ -117,7 +122,7 @@ case "$COMMAND" in
         if $DEV; then
             echo "ap1d: dev container running. Open a shell with: ./ap1d shell $MODULE"
         else
-            echo "ap1d: $MODULE running ($VARIANT). Follow logs with: ./ap1d logs $MODULE"
+            echo "ap1d: $MODULE running ($VARIANT, ROS discovery: $ROS_AUTOMATIC_DISCOVERY_RANGE). Follow logs with: ./ap1d logs $MODULE"
         fi
         ;;
     shell)

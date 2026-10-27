@@ -66,6 +66,14 @@ Containers use host networking and IPC, so they talk to ROS nodes on the host
 and in other containers as long as `ROS_DOMAIN_ID` (and `RMW_IMPLEMENTATION`,
 if you set one) match. Recordings in `bags/` appear at `/ws/bags`.
 
+ROS discovery stays on your machine by default (`ap1d` sets
+`ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`), so people developing on the same
+network, like campus Wi-Fi, never see each other's topics. To talk to another
+machine (the car, a teammate's laptop), run `export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`
+on both before starting, and use the same `ROS_DOMAIN_ID`. For native (non-Docker)
+work on shared networks, put `export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` in
+your shell rc too.
+
 `./ap1d` runs every container as your host user. Fast DDS shared memory only
 works between processes of the same user, so native nodes must run as the
 user who ran `./ap1d` (don't use `sudo ./ap1d`). If you previously ran
