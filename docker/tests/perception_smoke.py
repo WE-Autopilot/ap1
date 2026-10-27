@@ -1,10 +1,10 @@
 """Smoke test for the perception image. Runs inside the container.
 
-    python3 perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
+    python3 perception_smoke.py --device cpu [--model path/to/model.onnx]
 
 Checks that the runtime dependencies import and work together, that GPU images
-have CUDA-enabled onnxruntime, and that YOLO runs end to end. Doesn't need
-camera data or a ROS graph.
+have CUDA-enabled onnxruntime, and that YOLO runs end to end on the model baked
+into the image (or --model). Doesn't need camera data or a ROS graph.
 """
 import argparse
 import os
@@ -59,16 +59,18 @@ def node_executable():
 
 
 def yolo(model, device):
+    from ap1_perception.models import default_yolo_model
     from ap1_perception.yolo import YOLO
+    model = model or default_yolo_model()
     detector = YOLO(model_path=model, device=device)
     boxes, classes = detector.forward(np.zeros((480, 640, 3), dtype=np.uint8))
     assert boxes.shape[1] == 4 and len(boxes) == len(classes)
-    return f"ran on {detector.provider}, {len(boxes)} detection(s) on a blank frame"
+    return f"{Path(model).name} ran on {detector.provider}, {len(boxes)} detection(s) on a blank frame"
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", help="YOLO .onnx model; skips the inference check if omitted")
+    parser.add_argument("--model", help="YOLO .onnx model; defaults to the one installed with ap1_perception")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "auto"])
     args = parser.parse_args()
 
@@ -78,10 +80,7 @@ def main():
         check("onnxruntime providers", providers),
         check("yolo_node installed", node_executable),
     ]
-    if args.model:
-        results.append(check(f"YOLO inference (device={args.device})", lambda: yolo(args.model, args.device)))
-    else:
-        print("skip  YOLO inference: no --model given")
+    results.append(check(f"YOLO inference (device={args.device})", lambda: yolo(args.model, args.device)))
 
     sys.exit(0 if all(results) else 1)
 

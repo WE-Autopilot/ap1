@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -36,6 +36,22 @@ def _find_venv_site_packages() -> Path:
     raise RuntimeError('Could not find .venv — is the workspace set up correctly?')
 
 
+def _yolo_node(context):
+    params = [LaunchConfiguration('params_file'), {'device': LaunchConfiguration('device')}]
+    # Forward model_path only when given, so the node's default (the model
+    # installed with the package) applies otherwise
+    model_path = LaunchConfiguration('model_path').perform(context)
+    if model_path:
+        params.append({'model_path': model_path})
+    return [Node(
+        package='ap1_perception',
+        executable='yolo_node',
+        name='yolo_node',
+        output='screen',
+        parameters=params,
+    )]
+
+
 def generate_launch_description():
     try:
         site_packages = str(_find_venv_site_packages())
@@ -58,21 +74,10 @@ def generate_launch_description():
             description='YAML file with the YOLO node tuning parameters'),
         DeclareLaunchArgument(
             'model_path', default_value='',
-            description='Path to the YOLO .onnx model; empty uses the model bundled in the package'),
+            description='Path to a YOLO .onnx model; empty uses the one installed with the package'),
         DeclareLaunchArgument(
             'device', default_value='auto',
             description="'cuda' (fail if no GPU), 'cpu', or 'auto' (GPU when available)"),
     ]
 
-    return LaunchDescription(args + env_actions + [
-        Node(
-            package='ap1_perception',
-            executable='yolo_node',
-            name='yolo_node',
-            output='screen',
-            parameters=[LaunchConfiguration('params_file'), {
-                'model_path': LaunchConfiguration('model_path'),
-                'device': LaunchConfiguration('device'),
-            }],
-        ),
-    ])
+    return LaunchDescription(args + env_actions + [OpaqueFunction(function=_yolo_node)])

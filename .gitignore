@@ -24,5 +24,4 @@ __pycache__/
 .DS_Store
 
 # Mounted into containers by ./ap1d (see docker/README.md)
-/models/
 /bags/

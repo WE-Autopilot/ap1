@@ -37,10 +37,9 @@ services:
     profiles: [perception]
     image: ${AP1_REGISTRY:?run through ./ap1d}/perception:${AP1_VARIANT:?run through ./ap1d}
     volumes:
-      - ../models:/opt/ap1/models:ro
       - ../bags:/ws/bags
+    # The YOLO model is in the image (installed with ap1_perception)
     command: >
       ros2 launch ap1_perception yolo.launch.py
-      model_path:=/opt/ap1/models/yolo11n.onnx
       device:=${AP1_DEVICE:?run through ./ap1d}
   # TODO: Add other modules if/when they employ docker e.g. planning, control, mapping, localization

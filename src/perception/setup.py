@@ -16,10 +16,12 @@ setup(
         (os.path.join('share', package_name), ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        # Model files (Git LFS); found at runtime through ap1_perception.models
+        (os.path.join('share', package_name, 'models'), glob('models/*.onnx')),
     ],
     # include models inside package data
     package_data={
-        package_name: ['ufld/model.onnx', 'yolo/yolo11n.onnx', 'ufld/config.py'],
+        package_name: ['ufld/model.onnx', 'ufld/config.py'],
     },
     install_requires=['setuptools'],
     zip_safe=True,

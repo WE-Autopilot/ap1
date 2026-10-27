@@ -24,11 +24,12 @@ YOLO node's `device` parameter picks the hardware.
 2. GPU machines only: NVIDIA driver 580 or newer (needed for CUDA 13) and the
    [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
    then `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`.
-3. Put the model where containers can see it (`models/` is gitignored and
-   mounted read-only):
-   ```bash
-   mkdir -p models && cp src/perception/ap1_perception/yolo/yolo11n.onnx models/
-   ```
+3. [Git LFS](https://git-lfs.com), then `git lfs pull` in the repo. The YOLO
+   model (`src/perception/models/`) is stored in LFS and baked into the images;
+   a build fails with this hint if it's still an un-pulled pointer.
+
+The YOLO model used to be copied into a root `models/` folder. That's no longer
+needed: existing checkouts can delete their root `models/` folder.
 
 ## Everyday use
 
@@ -43,9 +44,11 @@ Inside the container, `src/perception` from your checkout is mounted at
 ```bash
 colcon build --symlink-install     # builds into /ws/install (kept across restarts)
 source install/setup.bash
-ros2 launch ap1_perception yolo.launch.py \
-    model_path:=/opt/ap1/models/yolo11n.onnx device:=cpu   # or device:=cuda
+ros2 launch ap1_perception yolo.launch.py device:=cpu   # or device:=cuda
 ```
+
+The node loads the model installed with the package by default and logs its
+path at startup. Pass `model_path:=/path/to/model.onnx` to try another one.
 
 Add `--gpu` to any command for the GPU variant, or set it once with
 `export AP1_VARIANT=gpu` in your shell rc.
@@ -100,7 +103,7 @@ Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
 
 ```
 ap1d                          wrapper for bake + compose (run from anywhere)
-.dockerignore                 keeps models, bags, build output out of images
+.dockerignore                 keeps bags, build output and the UFLD model out of images
 modules/                      how modules run (one service per module)
   docker-compose.yaml         deploy services: mounts, networking, launch commands
   docker-compose.dev.yaml     dev services: extend deploy, mount source, idle

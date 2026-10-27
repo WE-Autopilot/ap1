@@ -109,11 +109,7 @@ build() {
 }
 
 prepare_mounts() {
-    mkdir -p "$ROOT/models" "$ROOT/bags"
-    if [[ "$MODULE" == perception && ! -f "$ROOT/models/yolo11n.onnx" ]]; then
-        die "models/yolo11n.onnx not found. Copy it in with:
-  cp src/perception/ap1_perception/yolo/yolo11n.onnx models/"
-    fi
+    mkdir -p "$ROOT/bags"
 }
 
 # ---------------------------------------------------------------- commands
@@ -147,7 +143,7 @@ case "$COMMAND" in
         build
         compose --profile "$MODULE" run --rm --no-deps \
             -v "$ROOT/docker/tests:/tests:ro" "$MODULE" \
-            python3 "/tests/${MODULE}_smoke.py" --model /opt/ap1/models/yolo11n.onnx --device "$DEVICE"
+            python3 "/tests/${MODULE}_smoke.py" --device "$DEVICE"
         ;;
     e2e)
         require_module

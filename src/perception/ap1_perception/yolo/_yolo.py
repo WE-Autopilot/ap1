@@ -1,7 +1,7 @@
 """YOLO object detection on ONNX Runtime.
 
 Runs an Ultralytics-exported YOLO detection model (e.g. yolo11n.onnx, exported
-with nms=False) without depending on ultralytics or torch. Pre- and
+with nms=False; the package's model is found with ap1_perception.models) without depending on ultralytics or torch. Pre- and
 post-processing mirror ultralytics' predict defaults, so detections match what
 `ultralytics.YOLO(model).predict(img)` returned before.
 
@@ -16,8 +16,6 @@ import onnxruntime as ort
 
 from ..projection import box_select_points
 
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "yolo11n.onnx"
-
 CPU_PROVIDER = "CPUExecutionProvider"
 CUDA_PROVIDER = "CUDAExecutionProvider"
 
@@ -27,6 +25,8 @@ _STRIDE = 32
 _PAD_VALUE = 114
 _MAX_NMS = 30000
 _MAX_WH = 7680  # per-class box offset that makes NMS class-aware
+
+_LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
 
 
 def select_providers(device: str) -> list[str]:
@@ -47,11 +47,17 @@ def select_providers(device: str) -> list[str]:
 
 
 class YOLO:
-    def __init__(self, classes=(11,), K=None, model_path=None, device="auto",
+    def __init__(self, model_path, classes=(11,), K=None, device="auto",
                  conf=0.25, iou=0.7, max_det=300):
-        model_path = Path(model_path) if model_path else DEFAULT_MODEL_PATH
+        model_path = Path(model_path)
         if not model_path.is_file():
             raise FileNotFoundError(f"YOLO model not found at '{model_path}'")
+        with open(model_path, "rb") as f:
+            if f.read(len(_LFS_POINTER)) == _LFS_POINTER:
+                raise RuntimeError(
+                    f"'{model_path}' is a Git LFS pointer, not the model. "
+                    f"Run 'git lfs pull' in the repo, then rebuild."
+                )
 
         self.session = ort.InferenceSession(str(model_path), providers=select_providers(device))
         # onnxruntime silently falls back to CPU if CUDA libraries fail to load

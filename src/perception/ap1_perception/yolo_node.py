@@ -9,6 +9,7 @@ from cv_bridge import CvBridge
 import sensor_msgs_py.point_cloud2 as pc2
 from ap1_msgs.msg import EntityStateArray, EntityState
 
+from .models import default_yolo_model
 from .yolo import YOLO
 from .projection import pointcloud_to_pixel, check_box
 from .ransac import GroundRANSAC
@@ -75,8 +76,8 @@ class YoloNode(Node):
         self._K: np.ndarray | None = None
 
         # Startup-only parameters: changing these needs a node restart (not a rebuild).
-        # Empty model_path falls back to the model bundled in the package.
-        model_path = self._declare('model_path', '', 'YOLO .onnx model; empty uses the bundled model', True)
+        model_path = self._declare('model_path', default_yolo_model(),
+                                   'YOLO .onnx model; defaults to the one installed with the package', True)
         device = self._declare('device', 'auto', "'auto', 'cuda' or 'cpu'", True)
         sync_queue_size = self._declare('sync_queue_size', 5, 'Image/point cloud sync queue length', True)
         sync_slop = self._declare('sync_slop', 0.05, 'Max image/point cloud stamp gap (s)', True)
@@ -92,12 +93,12 @@ class YoloNode(Node):
         self._declare('ransac.r_thresh', 0.7, 'RANSAC inlier ratio to accept a plane')
         self._declare('ransac.l_thresh', 0.01, 'RANSAC inlier distance (m)')
 
-        self._model = YOLO(model_path=model_path or None, device=device)
+        self._model = YOLO(model_path=model_path, device=device)
         self._apply_tuning()
         self.add_on_set_parameters_callback(self._validate_parameters)
         self.add_post_set_parameters_callback(lambda _params: self._apply_tuning())
         self.get_logger().info(
-            f"YOLO loaded, running on {self._model.provider} "
+            f"YOLO loaded from {model_path}, running on {self._model.provider} "
             f"(conf={self._model.conf}, classes={self._model.classes.tolist()})."
         )
 

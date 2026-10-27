@@ -30,7 +30,8 @@ permissions:
 
 env:
   IMAGE: ghcr.io/we-autopilot/ap1/perception
-  YOLO_MODEL: src/perception/ap1_perception/yolo/yolo11n.onnx
+  # Starts with yolo so CI never pulls other (larger) models that may move here
+  YOLO_MODEL: src/perception/models/yolo*.onnx
   PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
 
 jobs:
@@ -45,7 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Only the YOLO model is needed (for the smoke test). Caching the LFS object
+      # The checkout has only LFS pointers; the YOLO model must be the real file
+      # before building, since it's baked into the image. Caching the LFS object
       # avoids spending the org's LFS bandwidth on every run.
       - name: Restore YOLO model from cache
         uses: actions/cache@v6
@@ -78,10 +80,9 @@ jobs:
       - name: Smoke test
         run: |
           docker run --rm \
-            -v "$PWD/$YOLO_MODEL:/opt/ap1/models/yolo11n.onnx:ro" \
             -v "$PWD/docker/tests:/tests:ro" \
             "$IMAGE:${{ matrix.variant }}" \
-            python3 /tests/perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
+            python3 /tests/perception_smoke.py --device cpu
 
       - name: Log in to GHCR
         if: env.PUSH == 'true'
