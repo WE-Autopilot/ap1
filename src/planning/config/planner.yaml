@@ -1,5 +1,6 @@
 planner_node:
   ros__parameters:
+    DEBUG: true
     topics:
       lanes:         /ap1/mapping/lanes
       odometer:      /ap1/mapping/odometer

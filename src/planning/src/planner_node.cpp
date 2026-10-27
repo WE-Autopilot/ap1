@@ -38,64 +38,56 @@ PlannerNode::PlannerNode(double rate_hz, std::string transitions_path)
     : Node("planner_node"), rate_hz_(rate_hz),
       fsm(this->now(), fsm::VehicleState::Driving, transitions_path), event_generator()
 {
-    // Declare path parameters with defaults.
-    this->declare_parameter("topics.lanes",         
-            "/ap1/mapping/lanes");
-    //this->declare_parameter("topics.target_location",
-    //      "/ap1/control/target_location);
-    this->declare_parameter("topics.target_speed",  
-            "/ap1/control/target_speed");
-    this->declare_parameter("topics.odometer",      
-            "/ap1/mapping/odometer");
-    this->declare_parameter("topics.entities",      
-            "/ap1/mapping/entities");
-    this->declare_parameter("topics.speed",         
-            "/ap1/actuation/speed");
-    this->declare_parameter("topics.state",         
-            "/ap1/planning/state");
-    this->declare_parameter("topics.target_path",   
-            "/ap1/planning/target_path");
-    this->declare_parameter("topics.speed_profile", 
-            "/ap1/planning/speed_profile");
+    // Declare DEBUG param with default
+    this->declare_paramter("DEBUG", false);
+    // Declare path parameters
+    this->declare_parameter("topics.lanes");
+    this->declare_parameter("topics.target_speed");
+    this->declare_parameter("topics.odometer");
+    this->declare_parameter("topics.entities");
+    this->declare_parameter("topics.speed");
+    this->declare_parameter("topics.state");
+    this->declare_parameter("topics.target);
+    this->declare_parameter("topics.speed_profile");
 
     // # Subscribe to all inputs
     this->lane_sub_ = create_subscription<LaneBoundaries>(
         this->get_parameter("topics.lanes").as_string(), 1,
-        [this](LaneBoundaries::SharedPtr msg) { this->on_lanes(msg); });
-
-    // this->target_location_sub_ = create_subscription<Point>(
-    //     this->get_parameter("topics.target_location").as_string(), 1,
-    //     [this](Point::SharedPtr msg) { this->on_target_location(msg); });
+        [this](LaneBoundaries::SharedPtr msg) {
+        this->on_lanes(msg); });
 
     this->target_speed_sub_ = create_subscription<FloatStamped>(
         this->get_parameter("topics.target_speed").as_string(), 1,
-        [this](FloatStamped::SharedPtr msg) { this->on_target_speed(msg); });
+        [this](FloatStamped::SharedPtr msg) {
+        this->on_target_speed(msg); });
 
     this->odometer_sub_ = create_subscription<FloatStamped>(
         this->get_parameter("topics.odometer").as_string(), 1,
-        [this](FloatStamped::SharedPtr msg) { this->on_odometer(msg); });
+        [this](FloatStamped::SharedPtr msg) {
+        this->on_odometer(msg); });
 
     this->entities_sub_ = create_subscription<EntityStateArray>(
         this->get_parameter("topics.entities").as_string(), 1,
-        [this](EntityStateArray::SharedPtr msg) { this->on_entities(msg); });
+        [this](EntityStateArray::SharedPtr msg) {
+        this->on_entities(msg); });
 
     this->speed_sub_ = create_subscription<FloatStamped>(
         this->get_parameter("topics.speed").as_string(), 1,
-        [this](FloatStamped::SharedPtr msg) { this->on_speed(msg); });
+        [this](FloatStamped::SharedPtr msg) {
+        this->on_speed(msg); });
 
     // # Publishers
-    this->state_pub_ = create_publisher<std_msgs::msg::String>(
-        this->get_parameter("topics.state").as_string(), 1);
+    this->state_pub_ =
+        create_publisher<std_msgs::msg::String>(this->get_parameter("topics.state").as_string(), 1);
     this->target_path_pub_ = create_publisher<TargetPathStamped>(
         this->get_parameter("topics.target_path").as_string(), 1);
-    this->speed_profile_pub_ =
-        create_publisher<SpeedProfileStamped>(
+    this->speed_profile_pub_ = create_publisher<SpeedProfileStamped>(
         this->get_parameter("topics.speed_profile").as_string(), 1);
 
     // # Create Planning Loop @ rate_hz
-    timer_ = create_wall_timer(
-        std::chrono::duration<double>(1.0f / rate_hz),
-        [this]() { this->planning_loop_callback(); });
+    timer_ = create_wall_timer(std::chrono::duration<double>(1.0f / rate_hz),
+                               [this]() {
+        this->planning_loop_callback(); });
 
     RCLCPP_INFO(this->get_logger(), "Path Planner Node initialized.");
 
@@ -112,34 +104,30 @@ void PlannerNode::planning_loop_callback()
     // check that we have all the necessary fields
     if (this->odometer_ == nullptr || this->current_lane_ == nullptr || this->entities_ == nullptr)
     {
-        RCLCPP_WARN_THROTTLE(
-            this->get_logger(), *this->get_clock(), 5000,
-            "1 or more necessary field is null. Skipping loop."
-        );
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                             "1 or more necessary field is null. Skipping loop.");
         return;
     }
 
-    // Check that field data is not too old. 
+    // Check that field data is not too old.
     const rclcpp::Time now = this->get_clock()->now();
     const auto odometer_age = (now - this->odometer_->header.stamp).seconds();
-    const auto current_lane_age = (now - this->current_lane_->header.stamp)
-        .seconds();
+    const auto current_lane_age = (now - this->current_lane_->header.stamp).seconds();
     const auto entities_age = (now - this->entities_->header.stamp).seconds();
 
-    if (odometer_age > DATA_TTL_SEC || current_lane_age > DATA_TTL_SEC 
-            || entities_age > DATA_TTL_SEC)
+    if (odometer_age > DATA_TTL_SEC || current_lane_age > DATA_TTL_SEC ||
+        entities_age > DATA_TTL_SEC)
     {
-        RCLCPP_WARN_THROTTLE(
-            this->get_logger(), *this->get_clock(), 5000,
-            "Stale data detected (odom: %.2fs, lane: %.2fs, entities: %.2fs). "
-            "Skipping loop.",
-            odometer_age, current_lane_age, entities_age
-        );
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                             "Stale data detected (odom: %.2fs, lane: %.2fs, entities: %.2fs). "
+                             "Skipping loop.",
+                             odometer_age, current_lane_age, entities_age);
         return;
     }
 
     // assemble frame
-    const frames::MapF map_f{this->speed, this->odometer_->value, this->now(), *this->current_lane_, *this->entities_};
+    const frames::MapF map_f{this->speed, this->odometer_->value, this->now(), *this->current_lane_,
+                             *this->entities_};
 
     // process events
     auto events = this->event_generator.update(map_f, this->fsm.context, this->now());
