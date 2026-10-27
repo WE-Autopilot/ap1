@@ -8,7 +8,7 @@
   ros__parameters:
     # Detection
     conf_threshold: 0.25    # min confidence, 0-1
-    iou_threshold: 0.7      # NMS overlap threshold; ignored by end-to-end (end2end=True) exports
+    iou_threshold: 0.7      # NMS overlap threshold; ignored by end-to-end models (YOLO26)
     max_detections: 300
     classes: [11]           # COCO ids to keep; 11 = stop sign
 

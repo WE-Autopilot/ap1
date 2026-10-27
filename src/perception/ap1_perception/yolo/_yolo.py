@@ -1,9 +1,16 @@
 """YOLO object detection on ONNX Runtime.
 
-Runs an Ultralytics-exported YOLO detection model (e.g. yolo11n.onnx, exported
-with nms=False; the package's model is found with ap1_perception.models) without depending on ultralytics or torch. Pre- and
-post-processing mirror ultralytics' predict defaults, so detections match what
-`ultralytics.YOLO(model).predict(img)` returned before.
+Runs an Ultralytics-exported YOLO detection model without depending on
+ultralytics or torch (the package's model is found with ap1_perception.models).
+Two output layouts are supported, detected from the model's output shape:
+
+- end-to-end (1, max_det, 6): rows of x1, y1, x2, y2, score, class. YOLO26's
+  end-to-end export (the package's yolo26n.onnx). Already deduplicated, no NMS.
+- raw (1, 4 + nc, anchors): YOLO11 and earlier (exported with nms=False), or
+  YOLO26 exported with end2end=False. Filtered here with class-aware NMS.
+
+Pre- and post-processing mirror ultralytics' predict defaults, so detections
+match what `ultralytics.YOLO(model).predict(img)` returns.
 
 The same code runs on CPU and GPU. Which one is used depends on the installed
 onnxruntime package (onnxruntime vs onnxruntime-gpu) and the `device` argument.
@@ -72,6 +79,8 @@ class YOLO:
         # A fixed-size export needs exactly imgsz x imgsz; a dynamic one takes the
         # smallest stride-aligned rectangle, which is what ultralytics does.
         self.dynamic = not all(isinstance(d, int) for d in model_input.shape[2:])
+        # End-to-end models (YOLO26) output final detections: (1, max_det, 6)
+        self.end2end = self.session.get_outputs()[0].shape[-1] == 6
 
         self.K = K
         self.classes = None if classes is None else np.asarray(classes)
@@ -90,8 +99,11 @@ class YOLO:
         Returns (boxes, classes): boxes is (N, 4) xyxy in pixels of `img`, classes is (N,).
         """
         blob, gain, pad = self._preprocess(img)
-        pred = self.session.run(None, {self.input_name: blob})[0][0]  # (4 + nc, anchors)
-        boxes, _, cls = self._nms(pred.T)
+        pred = self.session.run(None, {self.input_name: blob})[0][0]
+        if self.end2end:
+            boxes, _, cls = self._filter_end2end(pred)  # pred: (max_det, 6)
+        else:
+            boxes, _, cls = self._nms(pred.T)  # pred: (4 + nc, anchors)
 
         boxes[:, [0, 2]] = (boxes[:, [0, 2]] - pad[0]) / gain[0]
         boxes[:, [1, 3]] = (boxes[:, [1, 3]] - pad[1]) / gain[1]
@@ -132,6 +144,16 @@ class YOLO:
         blob = img[..., ::-1].transpose(2, 0, 1)[np.newaxis]  # BGR HWC -> RGB NCHW
         blob = np.ascontiguousarray(blob, dtype=np.float32) / 255.0
         return blob, (new_w / w, new_h / h), (left, top)
+
+    def _filter_end2end(self, pred):
+        """Filter end-to-end (max_det, 6) rows into (boxes xyxy, scores, classes); no NMS needed."""
+        scores, cls = pred[:, 4], pred[:, 5].astype(np.int64)
+        keep = scores > self.conf
+        if self.classes is not None:
+            keep &= np.isin(cls, self.classes)
+        pred, scores, cls = pred[keep], scores[keep], cls[keep]
+        order = np.argsort(-scores, kind="stable")[:self.max_det]
+        return pred[order, :4].copy(), scores[order], cls[order].astype(np.float32)
 
     def _nms(self, pred):
         """Filter raw (anchors, 4 + nc) predictions into (boxes xyxy, scores, classes)."""

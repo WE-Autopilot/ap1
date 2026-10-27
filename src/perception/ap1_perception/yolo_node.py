@@ -84,7 +84,7 @@ class YoloNode(Node):
 
         # Tuning parameters: can also be changed live with `ros2 param set`.
         self._declare('conf_threshold', 0.25, 'Min detection confidence, 0-1')
-        self._declare('iou_threshold', 0.7, 'NMS IoU threshold, 0-1 (ignored by end-to-end exports)')
+        self._declare('iou_threshold', 0.7, 'NMS IoU threshold, 0-1 (ignored by end-to-end models like YOLO26)')
         self._declare('max_detections', 300, 'Max detections per frame')
         self._declare('classes', [11], 'COCO class ids to keep (11 = stop sign)')
         self._declare('min_box_points', 3, 'Min point cloud points inside a box to publish it')

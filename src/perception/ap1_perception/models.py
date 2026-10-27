@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 
-YOLO_MODEL_FILE = 'yolo11n.onnx'
+YOLO_MODEL_FILE = 'yolo26n.onnx'
 
 
 def models_dir() -> Path:
