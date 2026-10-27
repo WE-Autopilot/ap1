@@ -8,6 +8,7 @@
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
+  <depend>rcl_interfaces</depend>
   <depend>ap1_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>geometry_msgs</depend>
@@ -18,6 +19,9 @@
   <depend>vision_msgs</depend>
   <depend>python3-numpy</depend>
 
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>realsense2_camera</exec_depend>
   <!-- GPU images set AP1_GPU=1 (docker/base.Dockerfile); conditional dependencies -->

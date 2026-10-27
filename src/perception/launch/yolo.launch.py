@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
@@ -51,6 +52,11 @@ def generate_launch_description():
 
     args = [
         DeclareLaunchArgument(
+            'params_file',
+            default_value=os.path.join(
+                get_package_share_directory('ap1_perception'), 'config', 'yolo.yaml'),
+            description='YAML file with the YOLO node tuning parameters'),
+        DeclareLaunchArgument(
             'model_path', default_value='',
             description='Path to the YOLO .onnx model; empty uses the model bundled in the package'),
         DeclareLaunchArgument(
@@ -64,7 +70,7 @@ def generate_launch_description():
             executable='yolo_node',
             name='yolo_node',
             output='screen',
-            parameters=[{
+            parameters=[LaunchConfiguration('params_file'), {
                 'model_path': LaunchConfiguration('model_path'),
                 'device': LaunchConfiguration('device'),
             }],

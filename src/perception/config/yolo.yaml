@@ -1,0 +1,25 @@
+# Tuning parameters for yolo_node. Edit and relaunch - no rebuild needed when
+# the file is passed with params_file:=..., e.g.
+#   ros2 launch ap1_perception yolo.launch.py params_file:=/path/to/yolo.yaml
+# The tuning values (not the sync_* ones) can also be changed while running:
+#   ros2 param set /yolo_node conf_threshold 0.4
+# model_path and device are set through the launch arguments of the same name.
+/**:
+  ros__parameters:
+    # Detection
+    conf_threshold: 0.25    # min confidence, 0-1
+    iou_threshold: 0.7      # NMS overlap threshold; ignored by end-to-end (end2end=True) exports
+    max_detections: 300
+    classes: [11]           # COCO ids to keep; 11 = stop sign
+
+    # Image / point cloud pairing (restart to change)
+    sync_queue_size: 5
+    sync_slop: 0.05         # s
+
+    # Entity estimation
+    min_box_points: 3       # min cloud points inside a box to publish it
+    ransac:
+      max_retry: 20
+      p_thresh: 1.0         # m
+      r_thresh: 0.7
+      l_thresh: 0.01        # m
