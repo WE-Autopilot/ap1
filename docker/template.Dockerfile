@@ -72,7 +72,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gdb less nano sudo tmux && \
+    apt-get install -y --no-install-recommends gdb less nano sudo tmux vim && \
     rm -rf /var/lib/apt/lists/*
 
 # Ubuntu 24.04 images ship a user "ubuntu" with UID/GID 1000; drop it so the
