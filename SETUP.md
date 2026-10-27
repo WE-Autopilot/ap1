@@ -53,7 +53,7 @@ include `src/`, so importing from inside `src/` creates nested paths such as
 
 ## 2. Set Up the Perception Python Environment
 
-The perception package uses `uv` to manage its Python dependencies (ultralytics, onnxruntime, PyQt5, torch, etc.).
+The perception package uses `uv` to manage its Python dependencies (onnxruntime, OpenCV, torch).
 
 ```bash
 cd ~/path_to_ap1/ap1/src/perception
@@ -214,8 +214,7 @@ ros2 launch ap1_bringup full_system.launch.py
 | Error | Cause | Fix |
 |---|---|---|
 | `Package 'ap1_bringup' not found` | `colcon build` was run from inside `src/` | `rm -rf src/build src/install src/log` then rebuild from workspace root |
-| `No module named 'ultralytics'` | Perception venv not on `PYTHONPATH` | Add venv `site-packages` to `PYTHONPATH` (see Step 3) |
-| `No module named 'onnxruntime'` | Same as above | Same fix |
+| `No module named 'onnxruntime'` | Perception venv not on `PYTHONPATH` | Add venv `site-packages` to `PYTHONPATH` (see Step 3) |
 | `No module named 'PyQt6'` | Console requires PyQt6 | `pip install PyQt6` into the active venv |
 | All nodes shut down immediately | A `CriticalNode` crashed (usually `yolo_node`) | Fix the crashing node first — it takes down the whole system on exit |
 | `WARN: Velocity is null` / `necessary field is null` | Normal at startup | Nodes are waiting for sensor data — not an error |

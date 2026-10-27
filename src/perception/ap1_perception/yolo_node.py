@@ -70,7 +70,12 @@ class YoloNode(Node):
 
         self._bridge = CvBridge()
         self._K: np.ndarray | None = None
-        self._model: YOLO | None = None
+
+        # Empty model_path falls back to the model bundled in the package.
+        model_path = self.declare_parameter('model_path', '').value
+        device = self.declare_parameter('device', 'auto').value
+        self._model = YOLO(model_path=model_path or None, device=device)
+        self.get_logger().info(f"YOLO loaded, running on {self._model.provider}.")
 
         self._pub = self.create_publisher(EntityStateArray, PUBLISH_TOPIC, 10)
 
@@ -87,14 +92,14 @@ class YoloNode(Node):
         if self._K is not None:
             return
         self._K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
-        self._model = YOLO(K=self._K)
-        self.get_logger().info("Camera intrinsics received — YOLO node ready.")
+        self._model.K = self._K
+        self.get_logger().info("Camera intrinsics received - YOLO node ready.")
 
     def _sync_callback(self, color_msg: Image, pc_msg: PointCloud2) -> None:
-        if self._K is None or self._model is None:
+        if self._K is None:
             return
 
-        # ultralytics expects bgr encoding not rgb
+        # YOLO expects bgr encoding not rgb
         color = self._bridge.imgmsg_to_cv2(color_msg, desired_encoding='bgr8')
 
         # read_points_numpy returns a plain (N, 3) float array directly

@@ -20,6 +20,9 @@
 
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>realsense2_camera</exec_depend>
+  <!-- GPU images set AP1_GPU=1 (docker/base.Dockerfile); conditional dependencies -->
+  <exec_depend condition="$AP1_GPU == 1">python3-onnxruntime-gpu-pip</exec_depend>
+  <exec_depend condition="$AP1_GPU != 1">python3-onnxruntime-pip</exec_depend>
 
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

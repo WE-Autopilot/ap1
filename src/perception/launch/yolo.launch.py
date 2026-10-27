@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 
 from launch import LaunchDescription
-from launch.actions import SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -48,11 +49,24 @@ def generate_launch_description():
         if site_packages else []
     )
 
-    return LaunchDescription(env_actions + [
+    args = [
+        DeclareLaunchArgument(
+            'model_path', default_value='',
+            description='Path to the YOLO .onnx model; empty uses the model bundled in the package'),
+        DeclareLaunchArgument(
+            'device', default_value='auto',
+            description="'cuda' (fail if no GPU), 'cpu', or 'auto' (GPU when available)"),
+    ]
+
+    return LaunchDescription(args + env_actions + [
         Node(
             package='ap1_perception',
             executable='yolo_node',
             name='yolo_node',
             output='screen',
+            parameters=[{
+                'model_path': LaunchConfiguration('model_path'),
+                'device': LaunchConfiguration('device'),
+            }],
         ),
     ])
