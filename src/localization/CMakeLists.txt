@@ -17,6 +17,8 @@ find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(PCL REQUIRED)
 find_package(ap1_msgs REQUIRED)
+# Autoware's NDT (multigrid_ndt_omp). apt: ros-jazzy-autoware-ndt-scan-matcher
+find_package(autoware_ndt_scan_matcher REQUIRED)
 
 add_executable(localization_node
   src/localization_node.cpp
@@ -40,6 +42,7 @@ ament_target_dependencies(localization_node
   pcl_conversions
   pcl_ros
   ap1_msgs
+  autoware_ndt_scan_matcher
 )
 
 target_link_libraries(localization_node ${PCL_LIBRARIES})

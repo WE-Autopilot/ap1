@@ -1,0 +1,23 @@
+# Parameters for ap1_localization/localization_node (sample NDT localizer).
+# NDT values match autoware_ndt_scan_matcher's defaults
+# (/opt/ros/jazzy/share/autoware_ndt_scan_matcher/config/ndt_scan_matcher.param.yaml).
+ndt_localization:
+  ros__parameters:
+    map_path: ""            # absolute path to a .pcd map, e.g. one saved by LIO-SAM
+    map_frame: map
+    base_frame: base_link
+    publish_tf: true        # set false if another node already publishes map -> base_link
+    min_nvtl: 2.3           # reject matches scoring below this (Autoware's default threshold)
+    # initial_pose: [x, y, z, yaw]   # uncomment to start without RViz; otherwise waits for /initialpose
+
+    ndt:
+      resolution: 2.0
+      step_size: 0.1
+      trans_epsilon: 0.01
+      max_iterations: 30
+      num_threads: 4
+
+    scan:
+      leaf_size: 1.0
+      min_range: 2.0
+      max_range: 80.0
