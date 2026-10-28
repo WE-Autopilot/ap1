@@ -77,14 +77,15 @@ def generate_launch_description():
     # == PLANNER NODE ==
     pkg_share = get_package_share_directory('ap1_planning')
     transitions_file_path = os.path.join(pkg_share, 'config', 'stop_sign_transitions.yaml')
+    planner_yaml_path = os.path.join(pkg_share, 'config', 'planner.yaml')
+
     planner = CriticalNode(
         package='ap1_planning',
         executable='planner_node',
         name='ap1_planning',
         output='log', 
-        arguments=[
-            transitions_file_path
-        ]
+        arguments=[transitions_file_path],
+        parameters=[planner_yaml_path]
     )
 
     # == PERCEPTION NODES ==
