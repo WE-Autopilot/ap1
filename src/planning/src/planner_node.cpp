@@ -38,8 +38,8 @@ PlannerNode::PlannerNode(double rate_hz, std::string transitions_path)
     : Node("planner_node"), rate_hz_(rate_hz),
       fsm(this->now(), fsm::VehicleState::Driving, transitions_path), event_generator()
 {
-    // Declare DEBUG param with default
-    this->declare_paramter("DEBUG", false);
+    // Read and validate DEBUG once at startup.
+    this->debug_ = this->declare_parameter("DEBUG").as_bool();
     // Declare path parameters
     this->declare_parameter("topics.lanes");
     this->declare_parameter("topics.target_speed");
@@ -47,34 +47,29 @@ PlannerNode::PlannerNode(double rate_hz, std::string transitions_path)
     this->declare_parameter("topics.entities");
     this->declare_parameter("topics.speed");
     this->declare_parameter("topics.state");
-    this->declare_parameter("topics.target);
+    this->declare_parameter("topics.target_path");
     this->declare_parameter("topics.speed_profile");
 
     // # Subscribe to all inputs
     this->lane_sub_ = create_subscription<LaneBoundaries>(
         this->get_parameter("topics.lanes").as_string(), 1,
-        [this](LaneBoundaries::SharedPtr msg) {
-        this->on_lanes(msg); });
+        [this](LaneBoundaries::SharedPtr msg) { this->on_lanes(msg); });
 
     this->target_speed_sub_ = create_subscription<FloatStamped>(
         this->get_parameter("topics.target_speed").as_string(), 1,
-        [this](FloatStamped::SharedPtr msg) {
-        this->on_target_speed(msg); });
+        [this](FloatStamped::SharedPtr msg) { this->on_target_speed(msg); });
 
     this->odometer_sub_ = create_subscription<FloatStamped>(
         this->get_parameter("topics.odometer").as_string(), 1,
-        [this](FloatStamped::SharedPtr msg) {
-        this->on_odometer(msg); });
+        [this](FloatStamped::SharedPtr msg) { this->on_odometer(msg); });
 
     this->entities_sub_ = create_subscription<EntityStateArray>(
         this->get_parameter("topics.entities").as_string(), 1,
-        [this](EntityStateArray::SharedPtr msg) {
-        this->on_entities(msg); });
+        [this](EntityStateArray::SharedPtr msg) { this->on_entities(msg); });
 
     this->speed_sub_ = create_subscription<FloatStamped>(
         this->get_parameter("topics.speed").as_string(), 1,
-        [this](FloatStamped::SharedPtr msg) {
-        this->on_speed(msg); });
+        [this](FloatStamped::SharedPtr msg) { this->on_speed(msg); });
 
     // # Publishers
     this->state_pub_ =
@@ -86,8 +81,7 @@ PlannerNode::PlannerNode(double rate_hz, std::string transitions_path)
 
     // # Create Planning Loop @ rate_hz
     timer_ = create_wall_timer(std::chrono::duration<double>(1.0f / rate_hz),
-                               [this]() {
-        this->planning_loop_callback(); });
+                               [this]() { this->planning_loop_callback(); });
 
     RCLCPP_INFO(this->get_logger(), "Path Planner Node initialized.");
 
@@ -129,16 +123,29 @@ void PlannerNode::planning_loop_callback()
     const frames::MapF map_f{this->speed, this->odometer_->value, this->now(), *this->current_lane_,
                              *this->entities_};
 
-    // process events
-    auto events = this->event_generator.update(map_f, this->fsm.context, this->now());
-
     // handle state
-    fsm::VehicleState previous_state = this->fsm.current_state;
-    if (!events.empty())
+    const auto previous_state = this->fsm.current_state;
+    if (this->debug_)
     {
-        // update next state
-        this->fsm.current_state =
-            fsm::next_state(this->fsm.current_state, events, this->fsm.transitions);
+        if (map_f.entities.entities.empty())
+        {
+            this->fsm.current_state = fsm::VehicleState::Driving;
+        }
+        else
+        {
+            // DEBUG assumes every entity is a stop sign, regardless of position.
+            // handle_stopping() still requires a sign with x > 0 and throws otherwise.
+            this->fsm.current_state = fsm::VehicleState::Stopping;
+        }
+    }
+    else
+    {
+        const auto events = this->event_generator.update(map_f, this->fsm.context, this->now());
+        if (!events.empty())
+        {
+            this->fsm.current_state =
+                fsm::next_state(this->fsm.current_state, events, this->fsm.transitions);
+        }
     }
     if (this->fsm.current_state != previous_state)
     { // if the state has changed
