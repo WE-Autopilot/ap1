@@ -74,6 +74,9 @@ export AP1_VARIANT="$VARIANT" AP1_DEVICE="$DEVICE"
 # Containers run as the host user (see modules/docker-compose.yaml)
 export AP1_UID="$(id -u)" AP1_GID="$(id -g)"
 export AP1_REGISTRY="${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}"
+# Appended to the deploy image tag. ap1d runs what it just built locally
+# (perception:cpu), so it's empty; -<git sha> would pin an exact CI-built image.
+export AP1_TAG_SUFFIX=""
 # Keep ROS 2 discovery on this machine unless told otherwise, so people sharing
 # a network (e.g. campus Wi-Fi) never see each other's topics. Containers use
 # host networking, so they still reach each other and native nodes. Export
@@ -104,7 +107,8 @@ build() {
     local target="$MODULE-$VARIANT"
     $DEV && target="$MODULE-dev-$VARIANT"
     echo "ap1d: building $target"
-    (cd "$ROOT" && USERNAME="$(id -un)" USER_UID="$AP1_UID" USER_GID="$AP1_GID" \
+    # Dev images give their user your UID/GID, so files in mounted folders stay yours
+    (cd "$ROOT" && USER_UID="$AP1_UID" USER_GID="$AP1_GID" \
         REGISTRY="$AP1_REGISTRY" docker buildx bake -f docker/docker-bake.hcl --load "$target")
 }
 
@@ -164,7 +168,7 @@ case "$COMMAND" in
             # The image name it was created from; `ps` shows a bare ID once the tag moves
             running_image="$(docker inspect -f '{{.Config.Image}}' \
                 "$(compose --profile "$MODULE" ps -q "$MODULE")")"
-            if [[ "$running_image" != "$AP1_REGISTRY/$MODULE:$VARIANT" ]]; then
+            if [[ "$running_image" != "$AP1_REGISTRY/$MODULE:$VARIANT$AP1_TAG_SUFFIX" ]]; then
                 die "$MODULE is already running as '$running_image', not the $VARIANT variant.
   Use the same flag it was started with (e.g. ./ap1d e2e $MODULE --gpu), or ./ap1d down first."
             fi

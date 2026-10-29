@@ -37,8 +37,9 @@ YOLO node's `device` parameter picks the hardware.
 ./ap1d shell perception        # shell inside it
 ```
 
-Inside the container, `src/perception` from your checkout is mounted at
-`/ws/src/perception`, so edits on the host show up immediately:
+Inside the container, `src/msgs` and `src/perception` from your checkout are
+mounted at `/ws/src`, so edits on the host show up immediately. The dev image
+has no prebuilt copy of them: build both in the container:
 
 ```bash
 colcon build --symlink-install     # builds into /ws/install (kept across restarts)
@@ -130,8 +131,17 @@ docker/                       how images are built
    - `build` runs `colcon build` into `/opt/ap1`.
    - `deploy` copies only `/opt/ap1` on top of the dependencies, with no sources
      or build tree. This image runs on the car.
-   - `develop` is deploy plus dev tools and a user matching your UID/GID, so
-     files created in mounted folders stay yours.
+   - `develop` is `dependencies` plus dev tools, with no prebuilt workspace:
+     you build the mounted source in `/ws`. Its `ubuntu` user takes your
+     UID/GID, so files created in mounted folders stay yours.
+
+Dev build output lives in named volumes, one set per variant
+(`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
+so switching `--cpu`/`--gpu` never reuses a build compiled against the other
+image. `./ap1d down` keeps them; delete them with `docker volume rm` to start clean.
+
+Deploy containers restart after a crash or reboot until stopped with
+`./ap1d down`. Dev containers don't.
 
 New modules add a `<module>.Dockerfile`, targets in `docker-bake.hcl`, and a
 service in each `modules/` compose file. They reuse the base and the template.

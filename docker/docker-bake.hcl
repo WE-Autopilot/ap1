@@ -27,10 +27,7 @@ variable "CI" {
   default = false
 }
 
-// Dev images get a user matching the host's, so bind-mounted files keep their owner
-variable "USERNAME" {
-  default = "dev"
-}
+// Dev images give their "ubuntu" user the host's IDs, so bind-mounted files keep their owner
 variable "USER_UID" {
   default = "1000"
 }
@@ -122,7 +119,7 @@ target "perception" {
   cache-to   = cache_to("perception-${v.name}")
 }
 
-// Dev image: deploy + dev tools + host user; source is mounted at runtime
+// Dev image: dependencies + dev tools + host user's IDs; source is mounted and built at runtime
 target "perception-dev" {
   matrix     = { v = VARIANTS }
   name       = "perception-dev-${v.name}"
@@ -134,7 +131,6 @@ target "perception-dev" {
     "module-deps"   = "target:perception-deps-${v.name}"
   }
   args = {
-    USERNAME = USERNAME
     USER_UID = USER_UID
     USER_GID = USER_GID
   }

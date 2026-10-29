@@ -1,5 +1,7 @@
 # Dev containers: each extends its module's service, swaps in the dev image,
 # mounts the module's source and idles so you can shell in and build.
+# Dev images have no prebuilt workspace: everything in /ws/src is built in the
+# container with colcon, including ap1_msgs.
 
 services:
   #################### PERCEPTION ####################
@@ -9,7 +11,10 @@ services:
       service: perception
     profiles: [perception-dev]
     image: ${AP1_REGISTRY:?run through ./ap1d}/perception:${AP1_VARIANT:?run through ./ap1d}-dev
+    # Only deploy services come back after a crash or reboot
+    restart: "no"
     volumes:
+      - ../src/msgs:/ws/src/msgs
       - ../src/perception:/ws/src/perception
       # Hide the native-setup pyproject.toml: its [project] table breaks
       # colcon builds (see docker/perception.Dockerfile)
@@ -20,7 +25,12 @@ services:
       - perception-log:/ws/log
     command: sleep infinity
 
+# One set per variant: a build tree compiled against the CPU image must not be
+# reused in the GPU one, and the other way round
 volumes:
   perception-build:
+    name: ap1_perception-build-${AP1_VARIANT:?run through ./ap1d}
   perception-install:
+    name: ap1_perception-install-${AP1_VARIANT:?run through ./ap1d}
   perception-log:
+    name: ap1_perception-log-${AP1_VARIANT:?run through ./ap1d}

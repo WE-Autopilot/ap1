@@ -10,7 +10,9 @@
 #   dependencies  install those lists (cached until the lists change, not the code)
 #   build         colcon build into ${AP1_INSTALL}
 #   deploy        dependencies + install tree only; what runs on the car
-#   develop       deploy + dev tools + a user matching the host's UID/GID
+#   develop       dependencies + dev tools, no prebuilt workspace; source is
+#                 mounted and built in ${AP1_WS}. Its user "ubuntu" takes the
+#                 host's UID/GID so files in bind mounts keep their owner
 
 ######################## rosdep_scan ########################
 FROM module-source AS rosdep_scan
@@ -63,11 +65,10 @@ FROM dependencies AS deploy
 COPY --from=build ${AP1_INSTALL} ${AP1_INSTALL}
 
 ########################## develop ##########################
-# Source is bind-mounted at runtime and built as an overlay in ${AP1_WS}
-# on top of the image's install tree.
-FROM deploy AS develop
+# Built from dependencies, not deploy, so there is one copy of the workspace:
+# the mounted source, built with colcon in ${AP1_WS}.
+FROM dependencies AS develop
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=1000
 
@@ -75,16 +76,31 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gdb less nano sudo tmux vim && \
     rm -rf /var/lib/apt/lists/*
 
-# Ubuntu 24.04 images ship a user "ubuntu" with UID/GID 1000; drop it so the
-# host's IDs are free. Pre-create the workspace dirs so named volumes mounted
-# there inherit the dev user's ownership.
-RUN if id ubuntu > /dev/null 2>&1; then userdel -r ubuntu; fi && \
-    if ! getent group "${USER_GID}" > /dev/null; then groupadd --gid "${USER_GID}" "${USERNAME}"; fi && \
-    useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" && \
-    echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" && \
-    chmod 0440 "/etc/sudoers.d/${USERNAME}" && \
+# Give Ubuntu's built-in "ubuntu" user (UID/GID 1000) the host's IDs, like
+# devcontainers do, so files created in bind mounts belong to the host user.
+# If the host GID is already another group's (e.g. 20 on macOS), make that
+# group ubuntu's primary one. If the host UID belongs to another user (e.g. 0),
+# keep 1000. Pre-create the workspace dirs so named volumes mounted there
+# inherit ubuntu's ownership.
+RUN if ! id ubuntu > /dev/null 2>&1; then useradd --create-home --shell /bin/bash ubuntu; fi && \
+    if [ "$(id -u ubuntu)" != "${USER_UID}" ]; then \
+      if getent passwd "${USER_UID}" > /dev/null; then \
+        echo "warning: UID ${USER_UID} is taken by $(getent passwd "${USER_UID}" | cut -d: -f1), keeping ubuntu at $(id -u ubuntu)"; \
+      else \
+        usermod --uid "${USER_UID}" ubuntu; \
+      fi; \
+    fi && \
+    if [ "$(id -g ubuntu)" != "${USER_GID}" ]; then \
+      if getent group "${USER_GID}" > /dev/null; then \
+        usermod --gid "${USER_GID}" ubuntu; \
+      else \
+        groupmod --gid "${USER_GID}" ubuntu; \
+      fi; \
+    fi && \
+    echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu && \
+    chmod 0440 /etc/sudoers.d/ubuntu && \
     mkdir -p "${AP1_WS}/src" "${AP1_WS}/build" "${AP1_WS}/install" "${AP1_WS}/log" && \
-    chown -R "${USER_UID}:${USER_GID}" "${AP1_WS}"
+    chown -R ubuntu: "${AP1_WS}" /home/ubuntu
 
-USER ${USERNAME}
+USER ubuntu
 WORKDIR ${AP1_WS}
