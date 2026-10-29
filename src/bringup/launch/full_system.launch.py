@@ -78,7 +78,6 @@ def generate_launch_description():
     pkg_share = get_package_share_directory('ap1_planning')
     transitions_file_path = os.path.join(pkg_share, 'config', 'stop_sign_transitions.yaml')
     planner_yaml_path = os.path.join(pkg_share, 'config', 'planner.yaml')
-
     planner = CriticalNode(
         package='ap1_planning',
         executable='planner_node',
@@ -111,15 +110,17 @@ def generate_launch_description():
     )
 
     # == MAPPING ==
+    """
     mapping = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
-                get_package_share_directory('mapping_localization_python'),
+                get_package_share_directory('ap1_mapping'),
                 'launch',
                 'mapping_pipeline.launch.py'
             )
         )
     )
+    """
 
     return LaunchDescription(env_actions + [
         control,
@@ -127,5 +128,5 @@ def generate_launch_description():
         yolo,
         ufld_ground,
         console,
-        mapping
+        # mapping
     ])
