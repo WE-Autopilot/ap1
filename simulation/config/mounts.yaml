@@ -1,0 +1,20 @@
+# Where each sensor sits on the kart, relative to base_link.
+# Whatever records the raw bag must attach the CARLA sensors here and publish
+# the same poses on /tf_static, so this is the one place to change mount positions.
+#
+# ROS axes: x forward, y left, z up, in metres. roll, pitch, yaw in degrees.
+# Keys are the sensor frame ids from airy_lite.yaml / cv7_ahrs.yaml.
+#
+# Sources:
+#   [est]  estimate; replace with build-team / CAD numbers when known
+#
+# [est] base_link is taken to be the CARLA car's origin. Once the team defines
+# where base_link is on the kart, the CARLA car's origin may need an offset.
+
+lidar_link:
+  xyz: [0.0, 0.0, 2.5]    # [est] roof-mounted (ICD), centred, 2.5 m up
+  rpy: [0.0, 0.0, 0.0]    # [est] mounted level, facing forward
+
+imu_link:
+  xyz: [0.0, 0.0, 1.5]    # [est] centred, 1.5 m up
+  rpy: [0.0, 0.0, 0.0]    # [est] mounted level, axes aligned with the kart

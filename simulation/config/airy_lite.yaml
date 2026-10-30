@@ -1,0 +1,72 @@
+# RoboSense Airy Lite settings for filter_bag.py.
+# Format: see simulation/README.md ("Adding a sensor").
+#
+# Sources:
+#   [manual]    Airy Lite product manual
+#               https://robosense-robotics.github.io/product-manual/en/AiryLite/
+#   [rs_driver] RoboSense's ROS driver, https://github.com/RoboSense-LiDAR/rs_driver
+#   [ICD]       AP1 interface control document
+#   [est]       not in the manual; the comment says why
+#
+# When the manual is unclear, we pick the cleaner option. Sim data that's
+# noisier than the real sensor would confuse LIO-SAM for no good reason.
+
+name: RoboSense Airy Lite
+# Bump when any value below changes. It goes in bag names (see README), so a
+# bag always says which sensor settings made it.
+version: 1
+
+topics:
+  input: /carla/hero/lidar            # [est] assumed raw bag topic (see README)
+  output: /sensing/lidar/pointcloud   # [ICD]
+# [ICD] Frames & Transforms page. The raw bag's /tf_static must use this same
+# name (see README), so change both together.
+frame_id: lidar_link
+
+# Set true if CARLA's points come in with y pointing right instead of left.
+# Assumed false: the raw bag is expected to already be in ROS convention.
+input_left_handed: false
+
+rotation_hz: 10.0                     # [manual] 10 Hz
+
+# The 24 beams, evenly spaced from bottom to top.
+# Ring 0 is the bottom beam, same as RoboSense's driver [rs_driver].
+beams:
+  count: 24                           # [manual]
+  lower_deg: -11.5                    # [manual] vertical FOV -11.5 to +33.5 deg
+  upper_deg: 33.5                     # [manual]
+  # [est] How close a CARLA ray must be to a real beam to count as it.
+  # Kept tight so rings stay sharp: 0.1 deg is only 10 cm off at 60 m.
+  # Works because CARLA can copy these beams exactly (24 channels, same FOV).
+  tolerance_deg: 0.1
+
+min_range_m: 0.1                      # [manual] blind zone
+# [manual] Max range is 60 m. The manual's 30/40 m figures are only for dark
+# targets, and CARLA can't tell dark from bright, so we use the full 60 m.
+max_range_m: 60.0
+horizontal_fov_deg: [-180.0, 180.0]   # [manual] full 360 deg
+azimuth_resolution_deg: 0.6           # [manual]
+
+noise:
+  # [manual] Range accuracy by channel and distance: [up to m, accuracy m].
+  # Treated as 1 sigma, which is how RoboSense and resellers state it.
+  # [est] The manual stops at 40 m, so the 40 m value is reused out to 60 m
+  # instead of guessing a bigger one.
+  range_accuracy:
+    - channels: [7, 18]               # middle beams
+      steps: [[10.0, 0.005], [40.0, 0.010]]
+    - channels: [1, 6]                # bottom beams
+      steps: [[30.0, 0.010], [40.0, 0.015]]
+    - channels: [19, 24]              # top beams
+      steps: [[30.0, 0.010], [40.0, 0.015]]
+  # [est] Share of points randomly dropped. The manual has no number, and
+  # CARLA doesn't model what causes real misses (glass, dark surfaces).
+  dropout_rate: 0.0
+
+# [est] Moves CARLA's 0-1 intensity into the Airy's 0-255 range so rviz colours
+# look alike. Not a real reflectivity model, but LIO-SAM and NDT ignore
+# intensity anyway.
+intensity_scale: 255.0
+
+# Same seed + same bag = same output, so LIO-SAM runs are comparable.
+seed: 0
