@@ -309,7 +309,7 @@ else
     # Verify key packages
     info "Verifying perception dependencies..."
     VENV_PY="$PERCEPTION_DIR/.venv/bin/python3"
-    for pkg in ultralytics onnxruntime cv2; do
+    for pkg in onnxruntime cv2 torch; do
         if "$VENV_PY" -c "import $pkg" 2>/dev/null; then
             ok "$pkg importable"
         else
@@ -363,7 +363,7 @@ else
     info "Architecture detected: $ARCH"
 
     # Base skip keys — perception Python deps are fully managed by uv, not rosdep
-    SKIP_KEYS="ap1_perception ultralytics onnxruntime opencv-python torch pyqt5 pyqt6 python3-pyqt6"
+    SKIP_KEYS="ap1_perception onnxruntime opencv-python torch pyqt5 pyqt6 python3-pyqt6 python3-onnxruntime-pip python3-onnxruntime-gpu-pip"
 
     # ARM64-specific: pyrealsense2 and several perception packages
     # have no Jazzy aarch64 apt binaries available
@@ -548,7 +548,7 @@ done
 
 echo ""
 info "Checking system Python can see perception dependencies..."
-for pkg in ultralytics onnxruntime; do
+for pkg in onnxruntime; do
     if /usr/bin/python3 -c "import $pkg" 2>/dev/null; then
         ok "/usr/bin/python3 sees $pkg"
     else

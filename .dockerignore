@@ -1,0 +1,18 @@
+**/.git
+**/build
+**/install
+**/log
+**/.venv
+**/__pycache__
+**/*.egg-info
+
+# Models and bags are mounted at runtime, never baked into images
+**/*.onnx
+models
+bags
+*.bag
+*.db3
+*.mcap
+
+# External repos imported by ap1_setup.sh
+src/external
