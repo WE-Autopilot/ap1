@@ -6,7 +6,7 @@
 **/__pycache__
 **/*.egg-info
 
-# Models are mounted at runtime from models/ as well as bags
+# Models and bags are mounted at runtime, never baked into images
 **/*.onnx
 models
 bags

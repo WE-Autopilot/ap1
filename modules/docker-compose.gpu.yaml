@@ -1,4 +1,5 @@
-# GPU access for modules that use it. ./ap1d adds this file with --gpu.
+# GPU access for modules that use it. Add it with -f, together with
+# AP1_VARIANT=gpu (image) and AP1_DEVICE=cuda (inference device).
 # Needs the NVIDIA driver and NVIDIA Container Toolkit on the host.
 
 services:

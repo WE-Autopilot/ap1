@@ -15,5 +15,5 @@ RUN rm -f perception/pyproject.toml perception/uv.lock perception/.python-versio
 
 ####################### dependencies #######################
 # Dependencies rosdep can't express go here. Use it as a last resort: anything
-# declared in src/perception/package.xml is installed by the template.
+# declared in src/perception/package.xml is installed by base.Dockerfile.
 FROM base AS dependencies

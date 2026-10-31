@@ -1,15 +1,21 @@
 // Build graph for AP1 images: a base image per hardware variant, then modules on top.
-// Used by ./ap1d locally and by CI, so builds are defined in exactly one place.
+// Used locally and by CI, so builds are defined in exactly one place.
 //
 // Run from the repo root:
-//   docker buildx bake -f docker/docker-bake.hcl perception-cpu
+//   docker buildx bake -f docker/docker-bake.hcl --load perception-cpu
 //   docker buildx bake -f docker/docker-bake.hcl --print perception-gpu   # show resolved config
 //
-// Each module is three targets chained through named contexts:
-//   <module>-source-<variant>  and  <module>-deps-<variant>   (docker/<module>.Dockerfile)
-//   <module>-<variant> / <module>-dev-<variant>               (docker/template.Dockerfile)
+// Two Dockerfiles, chained through named contexts:
+//   docker/<module>.Dockerfile  module sources and extra deps
+//                               (<module>-source-<variant>, <module>-deps-<variant>)
+//   docker/base.Dockerfile      base-<variant> (stage `base`), and the shared pipeline
+//                               that turns a module into <module>-<variant> (stage `deploy`)
+//                               and <module>-dev-<variant> (stage `develop`)
+//
+// Variables are read from the environment, under the same names compose uses
+// (modules/docker-compose.yaml), e.g. AP1_UID=$(id -u) for the dev image.
 
-variable "REGISTRY" {
+variable "AP1_REGISTRY" {
   default = "ghcr.io/we-autopilot/ap1"
 }
 
@@ -28,10 +34,10 @@ variable "CI" {
 }
 
 // Dev images give their "ubuntu" user the host's IDs, so bind-mounted files keep their owner
-variable "USER_UID" {
+variable "AP1_UID" {
   default = "1000"
 }
-variable "USER_GID" {
+variable "AP1_GID" {
   default = "1000"
 }
 
@@ -66,12 +72,13 @@ target "base" {
   name       = "base-${v.name}"
   context    = "."
   dockerfile = "docker/base.Dockerfile"
+  target     = "base"
   args = {
     GENERIC_IMAGE = v.image
     AP1_GPU       = v.gpu
     ROS_DISTRO    = ROS_DISTRO
   }
-  tags       = ["${REGISTRY}/base:${ROS_DISTRO}-${v.name}"]
+  tags       = ["${AP1_REGISTRY}/base:${ROS_DISTRO}-${v.name}"]
   cache-from = cache_from("base-${v.name}")
   cache-to   = cache_to("base-${v.name}")
 }
@@ -105,15 +112,15 @@ target "perception" {
   matrix     = { v = VARIANTS }
   name       = "perception-${v.name}"
   context    = "."
-  dockerfile = "docker/template.Dockerfile"
+  dockerfile = "docker/base.Dockerfile"
   target     = "deploy"
   contexts = {
     "module-source" = "target:perception-source-${v.name}"
     "module-deps"   = "target:perception-deps-${v.name}"
   }
   tags = compact([
-    "${REGISTRY}/perception:${v.name}",
-    notequal(GIT_SHA, "") ? "${REGISTRY}/perception:${v.name}-${GIT_SHA}" : "",
+    "${AP1_REGISTRY}/perception:${v.name}",
+    notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/perception:${v.name}-${GIT_SHA}" : "",
   ])
   cache-from = cache_from("perception-${v.name}")
   cache-to   = cache_to("perception-${v.name}")
@@ -124,15 +131,15 @@ target "perception-dev" {
   matrix     = { v = VARIANTS }
   name       = "perception-dev-${v.name}"
   context    = "."
-  dockerfile = "docker/template.Dockerfile"
+  dockerfile = "docker/base.Dockerfile"
   target     = "develop"
   contexts = {
     "module-source" = "target:perception-source-${v.name}"
     "module-deps"   = "target:perception-deps-${v.name}"
   }
   args = {
-    USER_UID = USER_UID
-    USER_GID = USER_GID
+    USER_UID = AP1_UID
+    USER_GID = AP1_GID
   }
-  tags = ["${REGISTRY}/perception:${v.name}-dev"]
+  tags = ["${AP1_REGISTRY}/perception:${v.name}-dev"]
 }

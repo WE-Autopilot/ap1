@@ -1,4 +1,8 @@
-"""End-to-end test for the running YOLO node. Run with: ./ap1d e2e perception [--gpu]
+"""End-to-end test for the running YOLO node.
+
+Run from the repo root with the YOLO node up (see docker/README.md, "Tests"):
+    docker compose -f modules/docker-compose.yaml run --rm --no-deps \
+        -v "$PWD/docker/tests:/tests:ro" perception python3 /tests/perception_e2e.py
 
 Plays the role of the RealSense driver: publishes a stop-sign photo, matching
 camera info and a point cloud on the topics yolo_node subscribes to, then checks

@@ -5,16 +5,15 @@ This is WE Autopilot's master workspace for development of the self-driving car 
 ## Setup
 
 - **Native (all subsystems):** see [SETUP.md](SETUP.md).
-- **Docker (perception for now):** see [docker/README.md](docker/README.md). Containers are built and run with `./ap1d`.
+- **Docker (perception for now):** see [docker/README.md](docker/README.md). Images are built with `docker buildx bake` and run with `docker compose`.
 
 ## Repo Structure
 
 ```text
-ap1d               Docker wrapper: build, run, and test module containers
 ap1_setup.sh       Native setup script (see SETUP.md)
 ap1.repos          External repos imported with vcs (src/msgs, src/external/)
 docker/            Dockerfiles, bake file, and container tests
-modules/           Docker Compose files used by ap1d
+modules/           Docker Compose files: how module containers run
 scripts/           Smoke tests and utilities (see scripts/README.md)
 src/
   bringup/         ap1_bringup: launch files for the full system

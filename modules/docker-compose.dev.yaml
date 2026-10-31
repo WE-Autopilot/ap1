@@ -10,7 +10,7 @@ services:
       file: docker-compose.yaml
       service: perception
     profiles: [perception-dev]
-    image: ${AP1_REGISTRY:?run through ./ap1d}/perception:${AP1_VARIANT:?run through ./ap1d}-dev
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:${AP1_VARIANT:-cpu}-dev
     # Only deploy services come back after a crash or reboot
     restart: "no"
     volumes:
@@ -29,8 +29,8 @@ services:
 # reused in the GPU one, and the other way round
 volumes:
   perception-build:
-    name: ap1_perception-build-${AP1_VARIANT:?run through ./ap1d}
+    name: ap1_perception-build-${AP1_VARIANT:-cpu}
   perception-install:
-    name: ap1_perception-install-${AP1_VARIANT:?run through ./ap1d}
+    name: ap1_perception-install-${AP1_VARIANT:-cpu}
   perception-log:
-    name: ap1_perception-log-${AP1_VARIANT:?run through ./ap1d}
+    name: ap1_perception-log-${AP1_VARIANT:-cpu}

@@ -1,5 +1,5 @@
 # Version pins for packages that rosdep installs with pip (keys ending in -pip).
-# rosdep itself can't pin versions, so template.Dockerfile applies this file to
+# rosdep itself can't pin versions, so base.Dockerfile applies this file to
 # every pip install.
 
 # Must stay at the apt version (python3-numpy on Ubuntu 24.04). cv_bridge and

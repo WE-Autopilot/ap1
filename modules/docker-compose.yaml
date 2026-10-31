@@ -1,16 +1,20 @@
 # AP1 module services: how each module runs on the car and in integration tests.
-# Images are built by docker/docker-bake.hcl. Run through ./ap1d, which sets:
+# Images are built by docker/docker-bake.hcl. Run from the repo root, e.g.
+#   docker compose -f modules/docker-compose.yaml up -d perception
+# See docker/README.md for the everyday commands.
 #
-#   AP1_REGISTRY    image registry prefix
-#   AP1_VARIANT     cpu | gpu    which image variant to run
+# Settings, read from your shell (defaults in brackets):
+#   AP1_REGISTRY    image registry prefix          [ghcr.io/we-autopilot/ap1]
+#   AP1_VARIANT     cpu | gpu    image variant     [cpu]
 #   AP1_TAG_SUFFIX  appended to the deploy image tag: empty for local builds,
-#                   -<git sha> to pin an exact CI-built image
-#   AP1_DEVICE      cpu | cuda   inference device; cuda fails loudly without a GPU
-#   AP1_UID/GID     host user and group the containers run as
+#                   -<git sha> to pin an exact CI-built image  [empty]
+#   AP1_DEVICE      cpu | cuda   inference device  [cpu]; cuda fails loudly without a GPU
+#   AP1_UID/GID     user and group containers run as; must match yours  [1000]
+#   ROS_AUTOMATIC_DISCOVERY_RANGE                  [LOCALHOST]
 #
-# Overrides layered on top by ./ap1d:
+# Override files, layered on top with extra -f flags:
 #   docker-compose.dev.yaml   dev containers (source mounted, built inside)
-#   docker-compose.gpu.yaml   GPU access, only with --gpu
+#   docker-compose.gpu.yaml   GPU access, with AP1_VARIANT=gpu
 
 name: ap1
 
@@ -19,14 +23,14 @@ x-ros: &ros
   # ROS 2 discovery and shared-memory transport between containers and the host
   network_mode: host
   ipc: host
-  # Run as the host user. Fast DDS shared memory does not work between root and
-  # non-root processes, so a root container would see native nodes' topics but
-  # never exchange data with them. UDP-only transport (below) avoids that, but
-  # ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST, ap1d's default, forces shared
-  # memory back on and ignores FASTDDS_BUILTIN_TRANSPORTS.
+  # Run as the host user. Fast DDS shared memory does not work between processes
+  # of different users, so a container running as anyone else would see native
+  # nodes' topics but never exchange data with them. UDP-only transport (below)
+  # avoids that, but ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST, the default here,
+  # forces shared memory back on and ignores FASTDDS_BUILTIN_TRANSPORTS.
   # TODO: once every module runs in Docker, drop this (and ROS_HOME below) and run
   # deploy containers as root like WATonomous. Needed only while native nodes remain.
-  user: "${AP1_UID:?run through ./ap1d}:${AP1_GID:?run through ./ap1d}"
+  user: "${AP1_UID:-1000}:${AP1_GID:-1000}"
   environment:
     # Writable for any UID; the host UID may have no home in the image
     - ROS_HOME=/tmp/ros
@@ -35,20 +39,25 @@ x-ros: &ros
     - FASTDDS_BUILTIN_TRANSPORTS=${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
     - ROS_DOMAIN_ID
     - RMW_IMPLEMENTATION
-    - ROS_AUTOMATIC_DISCOVERY_RANGE
+    # Keep ROS 2 discovery on this machine unless told otherwise, so people sharing
+    # a network (e.g. campus Wi-Fi) never see each other's topics. Containers use
+    # host networking, so they still reach each other and native nodes. Export
+    # ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET to talk to other machines (car, laptops).
+    - ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE:-LOCALHOST}
 
 services:
   #################### PERCEPTION ####################
   perception:
     <<: *ros
     profiles: [perception]
-    image: ${AP1_REGISTRY:?run through ./ap1d}/perception:${AP1_VARIANT:?run through ./ap1d}${AP1_TAG_SUFFIX:-}
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:${AP1_VARIANT:-cpu}${AP1_TAG_SUFFIX:-}
     restart: unless-stopped
     volumes:
-      - ../models:/opt/ap1/models:ro
+      # The model is in Git LFS, so it's mounted straight from the checkout
+      - ../src/perception/ap1_perception/yolo/yolo11n.onnx:/opt/ap1/models/yolo11n.onnx:ro
       - ../bags:/ws/bags
     command: >
       ros2 launch ap1_perception yolo.launch.py
       model_path:=/opt/ap1/models/yolo11n.onnx
-      device:=${AP1_DEVICE:?run through ./ap1d}
+      device:=${AP1_DEVICE:-cpu}
   # TODO: Add other modules if/when they employ docker e.g. planning, control, mapping, localization
