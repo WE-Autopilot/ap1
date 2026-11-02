@@ -1,6 +1,7 @@
 # Where each sensor sits on the kart, relative to base_link.
 # Whatever records the raw bag must attach the CARLA sensors here and publish
 # the same poses on /tf_static, so this is the one place to change mount positions.
+# When these change, update the extrinsics table in simulation/README.md.
 #
 # ROS axes: x forward, y left, z up, in metres. roll, pitch, yaw in degrees.
 # Keys are the sensor frame ids from airy_lite.yaml / cv7_ahrs.yaml.

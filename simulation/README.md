@@ -148,7 +148,9 @@ through, so nothing else needs editing.
 
 Mounts can be tilted, rotated, or even upside down: set `rpy`, e.g.
 `[0.0, 10.0, 0.0]` tilts forward 10° and `[180.0, 0.0, 0.0]` is upside down.
-Keep variants in separate files.
+Keep variants in separate files. The filter works in each sensor's own frame
+and never assumes it is upright, so only `mounts.yaml` and the recorder's
+rotation change, plus the LIO-SAM extrinsics and step 6 below.
 
 The current values are estimates (lidar 2.5 m up, IMU 1.5 m up, both level
 and centred). When the real ones are known:
@@ -156,10 +158,51 @@ and centred). When the real ones are known:
 1. Put them in `mounts.yaml` and change the `[est]` tags to their source.
 2. Check where `base_link` is defined on the kart. The CARLA car's origin is
    assumed to be `base_link`; if they differ, the mounts need that offset.
-3. Record a new raw bag and filter it. Existing bags keep the old positions.
-4. Check in rviz that `lidar_link` / `imu_link` sit in the right places, and
-   that the empty ring around the car has a radius of about
-   lidar height / tan(11.5°) (≈ 4.9 × height).
+3. Update the extrinsics table below, including the LIO-SAM values.
+4. Record a new raw bag and filter it. Existing bags keep the old positions.
+5. Check in rviz that `lidar_link` / `imu_link` sit in the right places.
+6. Check the circle of empty ground around the car in the point cloud. It
+   is there because the lidar's lowest beam only reaches the ground some
+   distance away, so its size confirms the lidar height and orientation:
+   - Upright, the lowest beam points 11.5° down, so the circle's radius
+     is about 4.9 × the lidar's height above the ground. At the current
+     2.5 m, that is about 12.3 m.
+   - Upside down, the sensor's top edge (33.5°) faces down instead, so the
+     radius is about 1.5 × the height: about 3.8 m at 2.5 m.
+
+   (Radius = height / tan(downward beam angle).)
+
+### Extrinsics
+
+| Transform | xyz (m) | rpy (°) | Source | Used by |
+|---|---|---|---|---|
+| LiDAR → `base_link` | `[0.0, 0.0, 2.5]` | `[0, 0, 0]` | [est] `mounts.yaml` (roof-mounted per ICD) | `/tf_static` |
+| IMU → `base_link` | `[0.0, 0.0, 1.5]` | `[0, 0, 0]` | [est] `mounts.yaml` | `/tf_static` |
+| LiDAR → IMU (LIO-SAM `T_lb`) | `[0.0, 0.0, -1.0]` | `[0, 0, 0]` | [est] from the rows above | LIO-SAM `extrinsicTrans` / `extrinsicRot` |
+
+LIO-SAM `params.yaml`:
+
+```yaml
+extrinsicTrans: [0.0, 0.0, -1.0]
+extrinsicRot: [1.0, 0.0, 0.0,
+               0.0, 1.0, 0.0,
+               0.0, 0.0, 1.0]
+extrinsicRPY: [1.0, 0.0, 0.0,
+               0.0, 1.0, 0.0,
+               0.0, 0.0, 1.0]
+```
+
+`extrinsicTrans` is the IMU's position in the LiDAR frame (LIO-SAM's
+`imuPreintegration.cpp` gets the IMU pose as `lidarPose.compose(lidar2Imu)`,
+with `lidar2Imu` built from `+extrinsicTrans`), so the IMU 1 m below gives
+`-1.0`. For other mounts, with `R`, `p` from `mounts.yaml` (`l` LiDAR, `i` IMU):
+
+- `extrinsicRot = R_lᵀ · R_i`
+- `extrinsicTrans = R_lᵀ · (p_i − p_l)`
+- `extrinsicRPY = extrinsicRotᵀ` (LIO-SAM's ROS 2 branch; ROS 1 differs)
+
+E.g. the LiDAR upside down gives `extrinsicRot = extrinsicRPY = diag(1, -1, -1)`
+and `extrinsicTrans = [0.0, 0.0, 1.0]`.
 
 ## What the filter does
 
