@@ -102,7 +102,7 @@ what the real sensors do.
 - `rotation_frequency=10`.
 - Horizontal resolution of 0.6° or finer: `points_per_second` ≥ 144,000 for 24
   channels (more is fine, the filter thins it).
-- `range` ≥ 60.
+- `range` ≥ 40.
 - `noise_stddev=0` and `dropoff_general_rate=0`; the filter adds range noise.
 
 **IMU** (`sensor.other.imu`):
@@ -167,10 +167,10 @@ Numbers are the default configs' values; each comes from the sensor's config.
 
 **LiDAR**, per sweep:
 1. Stitch CARLA's per-tick slices into one 10 Hz rotation.
-2. Keep points from 0.1 m (blind zone) to 60 m (max range), inside the
-   horizontal FOV.
+2. Keep points beyond 0.1 m (blind zone), inside the horizontal FOV.
 3. Snap each point to the nearest configured beam → `ring` (Airy Lite: 0 = lowest beam).
    Points not within tolerance of a beam are dropped.
+   Then cap range per beam group: 40 m for channels 7–18, 30 m for the rest.
 4. Keep at most one point per ring per 0.6° of azimuth.
 5. Add Gaussian range noise along each ray, sized by the accuracy table for
    that point's channel and distance (optional dropout).
@@ -209,7 +209,7 @@ value, as the existing configs do.
 | `beams.elevations_deg: [...]` | | explicit beam angles, for uneven spacing; list order = ring order |
 | `beams.tolerance_deg` | yes | max distance from a CARLA ray to a real beam |
 | `min_range_m` | no (0) | blind zone |
-| `max_range_m` | yes | max range |
+| `max_range_m` | yes | a number, or zones like `noise.range_accuracy` with `range_m`, covering every beam |
 | `horizontal_fov_deg: [start, end]` | no (360°) | azimuth limits, counter-clockwise, 0° = forward |
 | `azimuth_resolution_deg` | yes | horizontal angle between points on a ring |
 | `noise.range_accuracy` | no (no noise) | list of zones: `channels: [first, last]` (1-based, optional = all beams) and `steps: [[up_to_m, stddev_m], ...]` |
@@ -261,7 +261,7 @@ unless noted.
 | Horizontal resolution | 0.6° | `azimuth_resolution_deg: 0.6` |
 | Frame rate | 10 Hz | `rotation_hz: 10` |
 | Points per second | 144,000 (24 × 600 × 10) | result of the above |
-| Max range | 60 m (30 m @10% outer zones, 40 m @10% central −0.25° to +22.25°) | `max_range_m: 60` |
+| Max range | 60 m (30 m @10% outer zones, 40 m @10% central −0.25° to +22.25°) | `max_range_m`: 40 m channels 7–18, 30 m others |
 | Blind zone | < 0.1 m | `min_range_m: 0.1` |
 | Range accuracy, channels 7–18 | 0.5 cm (0–10 m), 1 cm (10–40 m) | `noise.range_accuracy` |
 | Range accuracy, channels 1–6, 19–24 | 1 cm (0–30 m), 1.5 cm (30–40 m) | `noise.range_accuracy` |
@@ -303,6 +303,10 @@ cleaner option. A sim that is noisier than the real sensor would throw off
 LIO-SAM for reasons the kart never sees, while a slightly clean sim only
 makes tuning a little optimistic.
 
+**Exception: max range.** CARLA has no reflectivity, so every ray returns to
+the full range, but the Airy only reaches 60 m on bright targets. Range uses
+the manual's dark-target (10%) figures instead: 40 m central, 30 m outer.
+
 **Backed by another source**
 - **Ring 0 is the lowest beam.** RoboSense's
   [rs_driver](https://github.com/RoboSense-LiDAR/rs_driver) (`chan_angles.hpp`,
@@ -341,14 +345,12 @@ makes tuning a little optimistic.
 - **White noise read off the Allan plots** instead of the noise-density
   formula. The plot gives half the accel noise; it is the datasheet's own
   measurement, and the cleaner of the two.
-- **Lidar accuracy past 40 m** reuses the 40 m value. The manual stops at
-  40 m because that is where 10% targets drop out.
 - **`dropout_rate: 0`.** Real misses come from dark, shiny or glass surfaces,
   which CARLA doesn't model. There is no figure to base a rate on.
 - **`intensity_scale: 255`** only puts CARLA's 0–1 intensity in the Airy's
   0–255 range. LIO-SAM and NDT don't use intensity, so this mainly affects
   rviz colouring.
-- **`beams.tolerance_deg: 0.1`.** 0.1° is 10 cm of height at 60 m, so rings
+- **`beams.tolerance_deg: 0.1`.** 0.1° is 7 cm of height at 40 m, so rings
   stay sharper than the range noise. It needs CARLA's beams to match exactly.
 - **Per-point `time`** has one CARLA tick (10 ms) of resolution; the real
   sensor stamps each 2.7 ms packet.

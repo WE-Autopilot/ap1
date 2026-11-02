@@ -36,22 +36,29 @@ beams:
   lower_deg: -11.5                    # [manual] vertical FOV -11.5 to +33.5 deg
   upper_deg: 33.5                     # [manual]
   # [est] How close a CARLA ray must be to a real beam to count as it.
-  # Kept tight so rings stay sharp: 0.1 deg is only 10 cm off at 60 m.
+  # Kept tight so rings stay sharp: 0.1 deg is only 7 cm off at 40 m.
   # Works because CARLA can copy these beams exactly (24 channels, same FOV).
   tolerance_deg: 0.1
 
+# Keep at the real blind zone: hits on the kart's own body are removed by
+# LIO-SAM (lidarMinRange or a crop box), so real kart bags use the same value.
 min_range_m: 0.1                      # [manual] blind zone
-# [manual] Max range is 60 m. The manual's 30/40 m figures are only for dark
-# targets, and CARLA can't tell dark from bright, so we use the full 60 m.
-max_range_m: 60.0
+# [manual] Max range at 10% reflectivity (40 m central, 30 m outer channels).
+# CARLA has no reflectivity, so the 60 m bright-target max would return rays
+# off dark asphalt and grass the kart won't see.
+max_range_m:
+  - channels: [7, 18]                 # middle beams
+    range_m: 40.0
+  - channels: [1, 6]                  # bottom beams
+    range_m: 30.0
+  - channels: [19, 24]                # top beams
+    range_m: 30.0
 horizontal_fov_deg: [-180.0, 180.0]   # [manual] full 360 deg
 azimuth_resolution_deg: 0.6           # [manual]
 
 noise:
   # [manual] Range accuracy by channel and distance: [up to m, accuracy m].
   # Treated as 1 sigma, which is how RoboSense and resellers state it.
-  # [est] The manual stops at 40 m, so the 40 m value is reused out to 60 m
-  # instead of guessing a bigger one.
   range_accuracy:
     - channels: [7, 18]               # middle beams
       steps: [[10.0, 0.005], [40.0, 0.010]]

@@ -66,6 +66,12 @@ def quantity(value):
     return float(number) * UNITS[base]
 
 
+# ---------- config checking ----------
+
+class ConfigError(ValueError):
+    pass
+
+
 # ---------- lidar ----------
 
 def beam_elevations(beams):
@@ -73,6 +79,31 @@ def beam_elevations(beams):
     if 'elevations_deg' in beams:
         return np.radians(np.asarray(beams['elevations_deg'], dtype=np.float64))
     return np.radians(np.linspace(beams['lower_deg'], beams['upper_deg'], beams['count']))
+
+
+def channel_mask(zone, ring):
+    """Points in a zone's channels: [first, last] (1-based, optional = all)."""
+    if 'channels' not in zone:
+        return np.ones(len(ring), dtype=bool)
+    lo, hi = zone['channels']
+    return (ring >= lo - 1) & (ring <= hi - 1)
+
+
+def ring_max_range(max_range, n_rings):
+    """
+    Max range (m) per ring, from a number or a list of zones
+    {channels: [first, last] (optional = all), range_m}. Later zones win.
+    """
+    if isinstance(max_range, (int, float)):
+        return np.full(n_rings, float(max_range))
+    caps = np.full(n_rings, np.nan)
+    rings = np.arange(n_rings)
+    for zone in max_range:
+        caps[channel_mask(zone, rings)] = zone['range_m']
+    if np.isnan(caps).any():
+        missing = (np.flatnonzero(np.isnan(caps)) + 1).tolist()
+        raise ConfigError(f'max_range_m: no zone covers channel(s) {missing}')
+    return caps
 
 
 def range_crop(pts, r_min, r_max):
@@ -115,11 +146,7 @@ def range_stddev(ring, r, accuracy):
     """
     sigma = np.zeros(len(r))
     for zone in accuracy:
-        if 'channels' in zone:
-            lo, hi = zone['channels']
-            in_zone = (ring >= lo - 1) & (ring <= hi - 1)
-        else:
-            in_zone = np.ones(len(r), dtype=bool)
+        in_zone = channel_mask(zone, ring)
         steps = np.asarray(zone['steps'], dtype=np.float64)
         idx = np.minimum(np.searchsorted(steps[:, 0], r[in_zone]), len(steps) - 1)
         sigma[in_zone] = steps[idx, 1]
@@ -152,7 +179,7 @@ class LidarFilter:
         self.beam_tol = math.radians(b['tolerance_deg'])
         self.period_ns = int(round(1e9 / cfg['rotation_hz']))
         self.r_min = cfg.get('min_range_m', 0.0)
-        self.r_max = cfg['max_range_m']
+        self.r_max = ring_max_range(cfg['max_range_m'], len(self.beams))
         self.fov = cfg.get('horizontal_fov_deg', [-180.0, 180.0])
         self.az_res = math.radians(cfg['azimuth_resolution_deg'])
         noise = cfg.get('noise') or {}
@@ -215,9 +242,11 @@ class LidarFilter:
             parts.append(np.hstack([xyzi, np.full((len(xyzi), 1), t)]))
         pts = np.vstack(parts) if parts else np.empty((0, 5))
 
-        pts = range_crop(pts, self.r_min, self.r_max)
+        pts = range_crop(pts, self.r_min, self.r_max.max())
         pts = azimuth_crop(pts, *self.fov)
         pts, ring = snap_to_beams(pts, self.beams, self.beam_tol)
+        keep = np.linalg.norm(pts[:, :3], axis=1) <= self.r_max[ring]  # per-beam max range
+        pts, ring = pts[keep], ring[keep]
         pts, ring = thin_azimuth(pts, ring, self.az_res)
         if self.accuracy:
             sigma = range_stddev(ring, np.linalg.norm(pts[:, :3], axis=1), self.accuracy)
@@ -439,7 +468,8 @@ class LidarStream:
         per_sweep = self.n_points / self.n_out if self.n_out else 0
         print(f'{self.name}: {self.n_in} CARLA msgs -> {self.n_out} sweeps on {self.output}, '
               f'{per_sweep:.0f} pts/sweep (sensor max {self.filter.max_points()}; fewer is '
-              f'normal for open sky and the {self.filter.r_max} m range cap)')
+              f'normal for open sky and the {self.filter.r_max.min():g}-'
+              f'{self.filter.r_max.max():g} m range cap)')
         if self.filter.full_sweep_input:
             print(f'  warning: CARLA messages on {self.input} each cover a full rotation, so '
                   'per-point time is one value per sweep. Run CARLA with a faster fixed tick.')
