@@ -52,6 +52,13 @@ UNITS = {
     's': 1.0, 'min': 60.0, 'h': 3600.0,
     'm/s/rt-h': 1.0 / 60.0, 'deg/rt-h': DEG / 60.0, 'rad/rt-h': 1.0 / 60.0,
 }
+# What each unit measures, so config checking can reject e.g. a time given in
+# deg. Random walks are noise densities in other units.
+UNIT_KIND = {u: kind for kind, units in {
+    'accel': ['m/s^2', 'g', 'mg', 'ug'], 'gyro': ['rad/s', 'deg/s', 'deg/h'],
+    'angle': ['rad', 'deg'], 'time': ['s', 'min', 'h'],
+    'accel/rtHz': ['m/s/rt-h'], 'gyro/rtHz': ['deg/rt-h', 'rad/rt-h'],
+}.items() for u in units}
 
 
 def quantity(value):
@@ -70,6 +77,156 @@ def quantity(value):
 
 class ConfigError(ValueError):
     pass
+
+
+class InputError(ValueError):
+    """The raw bag breaks a requirement in README "What the raw bag must contain"."""
+
+
+def is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def leaf(expected, ok):
+    """Checker for a key whose value must pass ok(); `expected` goes in the error."""
+    def check(value, where):
+        if not ok(value):
+            raise ConfigError(f'{where} must be {expected}, got {value!r}')
+    return check
+
+
+def pair(ok):
+    return lambda v: isinstance(v, list) and len(v) == 2 and all(map(ok, v))
+
+
+STR = leaf('a string', lambda v: isinstance(v, str))
+INT = leaf('an integer', is_int)
+BOOL = leaf('true or false', lambda v: isinstance(v, bool))
+NUM = leaf('a number', is_number)
+NUMS = leaf('a list of numbers', lambda v: isinstance(v, list) and all(map(is_number, v)))
+RANGE = leaf('[start, end] (two numbers)', pair(is_number))
+CHANNELS = leaf('[first, last] (two integers)', pair(is_int))
+STEPS = leaf('a non-empty list of [up_to_m, stddev_m] pairs',
+             lambda v: isinstance(v, list) and v and all(map(pair(is_number), v)))
+
+
+def qty(kind):
+    """Checker for an IMU quantity: a bare SI number, or a string in `kind` units."""
+    def check(value, where):
+        if not (is_number(value) or isinstance(value, str)):
+            raise ConfigError(f'{where} must be a number or "<number> <unit>", got {value!r}')
+        try:
+            quantity(value)
+        except ValueError as e:
+            raise ConfigError(f'{where}: {e}') from None
+        if isinstance(value, str):
+            unit = value.strip().partition(' ')[2].strip()
+            got = (UNIT_KIND[unit[:-len('/rtHz')]] + '/rtHz' if unit.endswith('/rtHz')
+                   else UNIT_KIND[unit])
+            if got != kind:
+                raise ConfigError(f'{where}: "{value}" is in {got} units, expected {kind}')
+    return check
+
+
+# Every key a config may have, with a checker for its value. A nested dict is a
+# section; [dict] is a list of such sections; (checker, [dict]) is either.
+# Unknown keys are rejected, so a typo can't silently fall back to a default.
+TOPICS = {'input': STR, 'output': STR}
+LIDAR_KEYS = {
+    'name': STR, 'version': INT, 'topics': TOPICS,
+    'frame_id': STR, 'input_left_handed': BOOL, 'rotation_hz': NUM,
+    'beams': {'count': INT, 'lower_deg': NUM, 'upper_deg': NUM,
+              'elevations_deg': NUMS, 'tolerance_deg': NUM},
+    'min_range_m': NUM, 'max_range_m': (NUM, [{'channels': CHANNELS, 'range_m': NUM}]),
+    'horizontal_fov_deg': RANGE, 'azimuth_resolution_deg': NUM,
+    'noise': {'range_accuracy': [{'channels': CHANNELS, 'steps': STEPS}], 'dropout_rate': NUM},
+    'intensity_scale': NUM, 'seed': INT,
+}
+
+
+def imu_axis(unit):
+    return {'noise_density': qty(unit + '/rtHz'), 'white_noise_stddev': qty(unit),
+            'turn_on_bias': qty(unit), 'bias_instability': qty(unit),
+            'bias_correlation_time': qty('time')}
+
+
+IMU_KEYS = {
+    'name': STR, 'version': INT, 'topics': TOPICS,
+    'frame_id': STR, 'input_left_handed': BOOL, 'rate_hz': NUM,
+    'accel': imu_axis('accel'), 'gyro': imu_axis('gyro'),
+    'orientation': {'roll_pitch_stddev': qty('angle'), 'heading_stddev': qty('angle'),
+                    'correlation_time': qty('time')},
+    'seed': INT,
+}
+
+
+def check_keys(cfg, schema, where):
+    """Reject unknown keys and values of the wrong type."""
+    if not isinstance(cfg, dict):
+        raise ConfigError(f'{where} must be a mapping, got {cfg!r}')
+    unknown = sorted(set(cfg) - set(schema))
+    if unknown:
+        raise ConfigError(f'{where}: unknown key(s) {unknown}; allowed: {sorted(schema)}')
+    for key, sub in schema.items():
+        if key not in cfg:
+            continue
+        value, at = cfg[key], f'{where}.{key}'
+        if isinstance(sub, tuple):
+            # A plain value, or a list of sections.
+            if not isinstance(value, list):
+                sub[0](value, at)
+                continue
+            sub = sub[1]
+        if callable(sub):
+            sub(value, at)
+        elif value is None:
+            continue  # empty section, e.g. "noise:" with nothing under it
+        elif isinstance(sub, list):
+            if not isinstance(value, list):
+                raise ConfigError(f'{at} must be a list, got {value!r}')
+            for i, item in enumerate(value):
+                check_keys(item, sub[0], f'{at}[{i}]')
+        else:
+            check_keys(value, sub, at)
+
+
+def require(cfg, keys, where, why=''):
+    missing = [k for k in keys if k not in (cfg or {})]
+    if missing:
+        raise ConfigError(f'{where}: missing {", ".join(missing)}{why}')
+
+
+def check_lidar_config(cfg):
+    check_keys(cfg, LIDAR_KEYS, 'lidar config')
+    require(cfg, ['topics', 'frame_id', 'rotation_hz', 'beams', 'max_range_m',
+                  'azimuth_resolution_deg'], 'lidar config')
+    require(cfg['topics'], ['input', 'output'], 'topics')
+    b = cfg['beams'] or {}
+    require(b, ['tolerance_deg'], 'beams')
+    if 'elevations_deg' not in b:
+        require(b, ['count', 'lower_deg', 'upper_deg'], 'beams', ' (or give elevations_deg)')
+    if isinstance(cfg['max_range_m'], list):
+        for i, zone in enumerate(cfg['max_range_m']):
+            require(zone, ['range_m'], f'max_range_m[{i}]')
+    for i, zone in enumerate((cfg.get('noise') or {}).get('range_accuracy') or []):
+        require(zone, ['steps'], f'noise.range_accuracy[{i}]')
+
+
+def check_imu_config(cfg):
+    check_keys(cfg, IMU_KEYS, 'IMU config')
+    require(cfg, ['topics', 'frame_id', 'rate_hz'], 'IMU config')
+    require(cfg['topics'], ['input', 'output'], 'topics')
+    for axis in ('accel', 'gyro'):
+        c = cfg.get(axis) or {}
+        if 'bias_instability' in c:
+            require(c, ['bias_correlation_time'], axis, ' (needed when bias_instability is set)')
+    o = cfg.get('orientation') or {}
+    if 'roll_pitch_stddev' in o or 'heading_stddev' in o:
+        require(o, ['correlation_time'], 'orientation', ' (needed when a stddev is set)')
 
 
 # ---------- lidar ----------
@@ -174,6 +331,7 @@ class LidarFilter:
     """
 
     def __init__(self, cfg, rng):
+        check_lidar_config(cfg)
         b = cfg['beams']
         self.beams = beam_elevations(b)
         self.beam_tol = math.radians(b['tolerance_deg'])
@@ -192,7 +350,6 @@ class LidarFilter:
         self._slices = []          # (stamp_ns, Nx4 xyzi)
         self._start_ns = None      # sweep start (sim time)
         self._last_ns = None
-        self.full_sweep_input = False  # set if each CARLA message already covers a full rotation
 
     def max_points(self):
         width = min(self.fov[1] - self.fov[0], 360.0)
@@ -214,9 +371,14 @@ class LidarFilter:
         self._last_ns = stamp_ns
         if tick_ns <= 0:
             return None
-        if tick_ns >= self.period_ns:
-            self.full_sweep_input = True
         if self._start_ns is None:
+            # First tick only; later long ticks are gaps (below). Half a rotation,
+            # not a full one, since ns rounding can leave a 100 ms tick short.
+            if tick_ns > self.period_ns // 2:
+                raise InputError(
+                    f'CARLA lidar messages are {tick_ns / 1e6:.0f} ms apart, so sweeps lose '
+                    'per-point time (LIO-SAM needs it to deskew); run CARLA with '
+                    'fixed_delta_seconds=0.01')
             self._start_ns = self._slices[0][0] - tick_ns
         elif tick_ns > 2 * self.period_ns:
             # Gap in the bag: drop the partial sweep and start over.
@@ -321,8 +483,9 @@ class SensorErrors:
             self.white = quantity(cfg.get('noise_density', 0.0)) * math.sqrt(rate)
         self.turn_on = rng.normal(0.0, quantity(cfg.get('turn_on_bias', 0.0)), 3)
         gm_sigma = quantity(cfg.get('bias_instability', 0.0)) * BIAS_INSTABILITY_TO_GM_SIGMA
+        # tau is required when bias_instability is set; otherwise sigma is 0 and it's unused.
         self.bias = GaussMarkov(np.full(3, gm_sigma),
-                                quantity(cfg.get('bias_correlation_time', 1.0)), rng)
+                                quantity(cfg.get('bias_correlation_time', math.inf)), rng)
         self.cov = np.diag(np.full(3, self.white ** 2))
         self.rng = rng
 
@@ -335,10 +498,12 @@ class ImuFilter:
     Feed raw CARLA IMU samples in time order with apply(). It returns
     (accel, gyro, quat) with sensor errors added, or None if the sample is
     dropped to reach rate_hz. quat is None when the sensor has no
-    orientation output (no `orientation` section) or the input had none.
+    orientation output (no `orientation` section). If it has one, every input
+    sample must carry orientation (LIO-SAM needs it), else InputError.
     """
 
     def __init__(self, cfg, rng):
+        check_imu_config(cfg)
         rate = cfg['rate_hz']
         self.period = 1.0 / rate
         self.left_handed = cfg.get('input_left_handed', False)
@@ -350,11 +515,15 @@ class ImuFilter:
         if o is not None:
             rp = quantity(o.get('roll_pitch_stddev', 0.0))
             hd = quantity(o.get('heading_stddev', 0.0))
-            self.att_err = GaussMarkov([rp, rp, hd], quantity(o.get('correlation_time', 1.0)), rng)
+            self.att_err = GaussMarkov([rp, rp, hd], quantity(o.get('correlation_time', math.inf)), rng)
             self.att_cov = np.diag([rp ** 2, rp ** 2, hd ** 2])
         self._next = None
 
     def apply(self, t, acc, gyr, quat):
+        if self.reports_orientation and quat is None:
+            raise InputError(
+                f'IMU sample at t={t:.3f} s has no orientation (orientation_covariance[0] = -1 '
+                'or a zero quaternion). LIO-SAM needs IMU orientation')
         if self._next is not None and t < self._next:
             return None
         self._next = t + 0.75 * self.period  # tolerate jitter, still drops 2x-rate input
@@ -445,9 +614,9 @@ class LidarStream:
 
     def __init__(self, cfg):
         self.cfg = cfg
+        self.filter = LidarFilter(cfg, np.random.default_rng(cfg.get('seed', 0)))  # checks cfg
         self.name = cfg.get('name', cfg['topics']['output'])
         self.input, self.output = cfg['topics']['input'], cfg['topics']['output']
-        self.filter = LidarFilter(cfg, np.random.default_rng(cfg.get('seed', 0)))
         self.n_in = self.n_out = self.n_points = 0
 
     def process(self, data, t, writer):
@@ -470,9 +639,6 @@ class LidarStream:
               f'{per_sweep:.0f} pts/sweep (sensor max {self.filter.max_points()}; fewer is '
               f'normal for open sky and the {self.filter.r_max.min():g}-'
               f'{self.filter.r_max.max():g} m range cap)')
-        if self.filter.full_sweep_input:
-            print(f'  warning: CARLA messages on {self.input} each cover a full rotation, so '
-                  'per-point time is one value per sweep. Run CARLA with a faster fixed tick.')
 
 
 class ImuStream:
@@ -482,11 +648,12 @@ class ImuStream:
 
     def __init__(self, cfg):
         self.cfg = cfg
+        self.filter = ImuFilter(cfg, np.random.default_rng(cfg.get('seed', 0)))  # checks cfg
         self.name = cfg.get('name', cfg['topics']['output'])
         self.input, self.output = cfg['topics']['input'], cfg['topics']['output']
-        self.filter = ImuFilter(cfg, np.random.default_rng(cfg.get('seed', 0)))
-        self.n_in = self.n_out = self.n_no_orientation = 0
+        self.n_in = self.n_out = 0
         self.first = self.last = None
+        self.rate_checked = False
 
     def process(self, data, t, writer):
         from rclpy.serialization import deserialize_message, serialize_message
@@ -496,12 +663,17 @@ class ImuStream:
         stamp = stamp_to_ns(msg.header.stamp) * 1e-9
         self.first = stamp if self.first is None else self.first
         self.last = stamp
+        span = self.last - self.first
+        if not self.rate_checked and span >= 1.0:  # judge the rate on the first second
+            self.rate_checked = True
+            rate_in, rate = (self.n_in - 1) / span, self.cfg['rate_hz']
+            if rate_in < 0.95 * rate:
+                raise InputError(f'IMU input is {rate_in:.1f} Hz, slower than rate_hz {rate}; '
+                                 f'run CARLA with the IMU sensor_tick at or below {1 / rate:g} s')
 
         o = msg.orientation
         q = [o.x, o.y, o.z, o.w]
         has_orientation = msg.orientation_covariance[0] != -1.0 and np.linalg.norm(q) > 0.5
-        if self.filter.reports_orientation and not has_orientation:
-            self.n_no_orientation += 1
         a, g = msg.linear_acceleration, msg.angular_velocity
         res = self.filter.apply(stamp, [a.x, a.y, a.z], [g.x, g.y, g.z],
                                 q if has_orientation else None)
@@ -528,11 +700,6 @@ class ImuStream:
         rate = self.cfg['rate_hz']
         print(f'{self.name}: {self.n_in} msgs at {rate_in:.1f} Hz -> {self.n_out} msgs on '
               f'{self.output} at target {rate} Hz')
-        if rate_in and rate_in < 0.95 * rate:
-            print(f'  warning: input on {self.input} is slower than {rate} Hz; output is too')
-        if self.n_no_orientation:
-            print(f'  warning: {self.n_no_orientation} msgs had no orientation; output marks '
-                  'orientation unknown (covariance[0] = -1)')
 
 
 def topic_metadata(name, type_name):
@@ -566,6 +733,39 @@ def first_clock_ns(uri):
         return None
     _, data, _ = reader.read_next()
     return stamp_to_ns(deserialize_message(data, Clock).clock)
+
+
+def check_tf_static(uri, vehicle_frame, streams):
+    """
+    Every sensor frame must sit below the vehicle frame in /tf_static, or the
+    output has no base_link -> sensor transform and LIO-SAM can't place the data.
+    """
+    from rclpy.serialization import deserialize_message
+    from tf2_msgs.msg import TFMessage
+    children = {}
+    reader = open_reader(uri, ['/tf_static'])
+    while reader.has_next():
+        _, data, _ = reader.read_next()
+        for tf in deserialize_message(data, TFMessage).transforms:
+            children.setdefault(tf.header.frame_id, set()).add(tf.child_frame_id)
+    frames = sorted(set(children).union(*children.values()))
+    if vehicle_frame not in frames:
+        raise SystemExit(f'vehicle frame {vehicle_frame} is not in /tf_static of {uri} (frames: '
+                         f'{frames}); pass the right one with --vehicle-frame')
+    below, todo = set(), [vehicle_frame]
+    while todo:
+        frame = todo.pop()
+        if frame not in below:
+            below.add(frame)
+            todo.extend(children.get(frame, ()))
+    for s in streams:
+        frame_id = s.cfg['frame_id']
+        if frame_id not in below:
+            raise SystemExit(
+                f'{s.name}: frame_id {frame_id} is not below {vehicle_frame} in /tf_static of '
+                f'{uri} (frames: {frames}), so the output would have no transform for it. The '
+                'raw bag must use the config\'s frame_id (see "Topics and frames" in '
+                'simulation/README.md)')
 
 
 def rename_frame(tf_msg, old, new):
@@ -605,9 +805,15 @@ def filter_bag(in_uri, out_uri, streams, storage_id, keep_raw,
     for s in streams:
         if s.input not in topics:
             raise SystemExit(f'{s.name}: {s.input} is not in {in_uri}. Topics: {sorted(topics)}')
+    for name in ('/clock', '/tf_static'):
+        if name not in topics:
+            raise SystemExit(f'{name} is not in {in_uri}; the raw bag must have it (see "What '
+                             'the raw bag must contain" in simulation/README.md)')
     clock_ns = first_clock_ns(in_uri)
-    if clock_ns is None:
-        print('warning: no /clock in the input; keeping recording timestamps')
+    check_tf_static(in_uri, vehicle_frame, streams)
+    for name in ('/tf', gt_odom):
+        if name not in topics:
+            print(f'warning: no {name} in the input, so the output has no ground truth from it')
 
     import rosbag2_py
     writer = rosbag2_py.SequentialWriter()
@@ -640,7 +846,15 @@ def filter_bag(in_uri, out_uri, streams, storage_id, keep_raw,
         if topic in passthrough:
             writer.write(topic, data, t)
         if topic in by_input:
-            by_input[topic].process(data, t, writer)
+            s = by_input[topic]
+            try:
+                s.process(data, t, writer)
+            except InputError as e:
+                del writer  # closes the partial bag
+                raise SystemExit(
+                    f'{s.name} ({topic}): {e}. See "What the raw bag must contain" in '
+                    f'simulation/README.md. {out_uri} is incomplete; delete it before '
+                    're-running.') from None
         elif topic in ('/tf', '/tf_static'):
             msg = rename_frame(deserialize_message(data, TFMessage), vehicle_frame, base_frame)
             writer.write(GROUND_TRUTH_TF if topic == '/tf' else '/tf_static',
@@ -661,7 +875,10 @@ def filter_bag(in_uri, out_uri, streams, storage_id, keep_raw,
 
 def load(path):
     with open(path) as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    if not isinstance(cfg, dict):
+        raise SystemExit(f'{path}: expected a YAML mapping of config keys')
+    return cfg
 
 
 def main():
@@ -685,8 +902,13 @@ def main():
     if not args.lidar and not args.imu:
         args.lidar, args.imu = DEFAULT_LIDARS, DEFAULT_IMUS
 
-    streams = [LidarStream(load(path)) for path in args.lidar]
-    streams += [ImuStream(load(path)) for path in args.imu]
+    streams = []
+    for kind, paths in ((LidarStream, args.lidar), (ImuStream, args.imu)):
+        for path in paths:
+            try:
+                streams.append(kind(load(path)))
+            except ConfigError as e:
+                raise SystemExit(f'{path}: {e}') from None
     filter_bag(args.input, args.output, streams, args.storage, args.keep_raw,
                args.vehicle_frame, args.base_frame, args.ground_truth_odom)
 

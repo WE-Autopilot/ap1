@@ -47,8 +47,10 @@ python3 simulation/filter_bag.py ${BAG}_raw ${BAG}_filtered
   topic is copied through.
 - Output is written as `mcap` by default (`--storage sqlite3` to change).
 - Same bag + same `seed` in the configs = identical output.
-- At the end it prints a summary (sweeps, points per sweep, IMU rates) and warns
-  if the raw bag doesn't meet the requirements below.
+- At the end it prints a summary (sweeps, points per sweep, IMU rates). A raw
+  bag that doesn't meet the requirements below is an error; if that's found
+  mid-run, delete the partial output. Missing ground truth only warns.
+- Config typos, missing required keys and wrong types or units are errors.
 - If CARLA's frame or topic names change: `--vehicle-frame` (default
   `carla_base_link`) and `--ground-truth-odom` (default `/carla/hero/odometry`).
 
@@ -108,12 +110,17 @@ what the real sensors do.
 **IMU** (`sensor.other.imu`):
 - At least 100 Hz (`sensor_tick` ≤ 0.01). Faster input is decimated.
 - All `noise_*` attributes 0; the filter adds all IMU errors.
+- **Orientation in every message** (`orientation_covariance[0]` not -1).
+  LIO-SAM needs a 9-axis IMU and fails without it. `sensor.other.imu` has no
+  full orientation; the CARLA ROS bridge fills it from the sensor's transform,
+  and any other recorder must too.
 
 **World:** synchronous mode with `fixed_delta_seconds=0.01`. This is what gives
 the 100 Hz IMU, and it makes each lidar message a 36° slice of the rotation,
 which the filter stitches into full sweeps. Per-point `time` comes from which
 tick a point was in, so it has 10 ms resolution. If CARLA ticks at 0.1 s, each
-message is a whole sweep and every point gets the same time (the filter warns).
+message is a whole sweep and every point gets the same time, which LIO-SAM
+can't deskew (an error).
 
 **Topics and frames (assumed).** There is no official script for recording
 the raw bag yet; one is the next task. Until then, the filter assumes the raw
@@ -122,11 +129,14 @@ bag looks like this:
 | Topic | Contents |
 |---|---|
 | `/carla/hero/lidar` | `sensor_msgs/PointCloud2` in ROS convention (x forward, y left, z up), frame `lidar_link` |
-| `/carla/hero/imu` | `sensor_msgs/Imu` in ROS convention, frame `imu_link` |
+| `/carla/hero/imu` | `sensor_msgs/Imu` in ROS convention, frame `imu_link`, orientation filled in |
 | `/carla/hero/odometry` | ground-truth `nav_msgs/Odometry`, child frame `carla_base_link` |
 | `/tf` | ground truth, `carla_map → carla_base_link` |
 | `/tf_static` | `carla_base_link → lidar_link` / `imu_link`, matching [config/mounts.yaml](config/mounts.yaml) |
 | `/clock` | sim time (dropped by the filter) |
+
+Each config's `frame_id` must be under the vehicle frame in `/tf_static`, or
+the output has no transform for that sensor. `/tf` and the odometry are optional.
 
 If the recording script uses other names, change `topics.input` in the
 configs and pass `--vehicle-frame` / `--ground-truth-odom`; nothing else needs
@@ -227,8 +237,8 @@ Numbers are the default configs' values; each comes from the sensor's config.
 2. Accel and gyro: add a turn-on bias (drawn once per run), a slowly
    drifting bias (first-order Gauss-Markov), and white noise.
 3. Orientation: apply a slowly drifting roll/pitch/heading error to CARLA's
-   orientation. If the input has no orientation, the output marks it unknown
-   (`orientation_covariance[0] = -1`) and the filter warns.
+   orientation. Input without orientation is an error (see "What the raw bag
+   must contain").
 4. Set covariances from the datasheet.
 5. Publish on `/sensing/imu/data`.
 
@@ -237,13 +247,15 @@ Numbers are the default configs' values; each comes from the sensor's config.
 Copy the closest existing config, change the values to the new datasheet, and
 pass it with `--lidar` or `--imu`. No code changes are needed. Every sensor
 needs its own `topics.input` and `topics.output`. Keep a source comment on each
-value, as the existing configs do.
+value, as the existing configs do. Unknown keys, missing required keys and
+values of the wrong type are errors.
 
 ### LiDAR config
 
 | Key | Required | Meaning |
 |---|---|---|
 | `name` | no | label in the summary output |
+| `version` | no | bump when a value changes; goes in bag names |
 | `topics.input` / `topics.output` | yes | raw CARLA topic in, filtered topic out |
 | `frame_id` | yes | frame id of the output clouds |
 | `input_left_handed` | no (false) | flip y if the bag is in CARLA's left-handed frame |
@@ -269,11 +281,12 @@ Values can be bare numbers (SI) or strings with a unit as the datasheet
 prints them, e.g. `30 ug/rtHz`, `0.14 deg/rt-h`, `0.75 mg`. Units: `m/s^2`,
 `g`, `mg`, `ug`, `rad/s`, `deg/s`, `deg/h`, `rad`, `deg`, `s`, `min`, `h`,
 each with an optional `/rtHz`, plus the random walks `m/s/rt-h`, `deg/rt-h`,
-`rad/rt-h`.
+`rad/rt-h`. Each key only takes its kind of unit (e.g. a time for `*_time`).
 
 | Key | Required | Meaning |
 |---|---|---|
 | `name` | no | label in the summary output |
+| `version` | no | bump when a value changes; goes in bag names |
 | `topics.input` / `topics.output` | yes | raw CARLA topic in, filtered topic out |
 | `frame_id` | yes | frame id of the output messages |
 | `input_left_handed` | no (false) | convert from CARLA's left-handed frame |
@@ -283,7 +296,7 @@ each with an optional `/rtHz`, plus the random walks `m/s/rt-h`, `deg/rt-h`,
 | `accel.turn_on_bias` / `gyro.turn_on_bias` | no (0) | bias drawn once per run, as 1σ |
 | `accel.bias_instability` / `gyro.bias_instability` | no (0) | datasheet bias instability B; Gauss-Markov σ = B × 0.664 / 0.618 |
 | `accel.bias_correlation_time` / `gyro.bias_correlation_time` | if bias_instability set | Gauss-Markov τ |
-| `orientation` | no | leave out if the sensor doesn't output orientation; output is then marked unknown |
+| `orientation` | no, but LIO-SAM needs it | leave out if the sensor doesn't output orientation; output is then marked unknown |
 | `orientation.roll_pitch_stddev`, `.heading_stddev` | no (0) | orientation error σ |
 | `orientation.correlation_time` | if the stddevs are set | how fast the error wanders |
 | `seed` | no (0) | random seed |
