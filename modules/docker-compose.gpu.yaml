@@ -1,5 +1,5 @@
 # GPU access for modules that use it. Add it with -f, together with
-# AP1_VARIANT=gpu (image) and AP1_DEVICE=cuda (inference device).
+# AP1_VARIANT=gpu (which selects the GPU image where AP1_GPU=1).
 # Needs the NVIDIA driver and NVIDIA Container Toolkit on the host.
 
 services:
