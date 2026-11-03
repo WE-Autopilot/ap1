@@ -1,0 +1,76 @@
+# MicroStrain 3DM-CV7-AHRS settings for filter_bag.py.
+# Values use the datasheet's units; the filter converts them.
+# Format: see simulation/README.md ("Adding a sensor").
+#
+# Sources:
+#   [ds]     CV7 datasheet, Parker doc 8400-0141 Rev C (2023)
+#            https://www.mouser.com/datasheet/2/1083/Parker_8400_0141_3DM_CV7_Datasheet-3239993.pdf
+#   [plot]   read by eye off the datasheet's Allan variance plots (page 3),
+#            so roughly +-30%
+#   [driver] MicroStrain's ROS driver defaults
+#            https://github.com/LORD-MicroStrain/microstrain_inertial_driver_common/blob/main/config/params.yml
+#   [ICD]    AP1 interface control document
+#   [est]    not in the datasheet; the comment says why
+#
+# CARLA's IMU should be noise-free; all noise is added here.
+#
+# When the datasheet is unclear, we pick the cleaner option. Sim data that's
+# noisier than the real sensor would confuse LIO-SAM for no good reason.
+
+name: MicroStrain 3DM-CV7-AHRS
+# Bump when any value below changes. It goes in bag names (see README), so a
+# bag always says which sensor settings made it.
+version: 1
+
+topics:
+  input: /carla/hero/imu              # [est] assumed raw bag topic (see README)
+  output: /sensing/imu/data           # [ICD]
+# [ICD] Frames & Transforms page. The raw bag's /tf_static must use this same
+# name (see README), so change both together.
+frame_id: imu_link
+
+# Set true if CARLA's data comes in with y pointing right instead of left.
+# Assumed false: the raw bag is expected to already be in ROS convention.
+input_left_handed: false
+
+# [driver] The CV7 can run at 1-1000 Hz [ds]. 100 Hz is the default in
+# MicroStrain's ROS driver, so that's what the kart will run.
+rate_hz: 100.0
+
+accel:
+  noise_density: 30 ug/rtHz           # [ds]
+  # [plot] Noise per 100 Hz sample, taken from the datasheet's own plot.
+  # The CV7 smooths its output, so this is lower than the noise density
+  # predicts (150 vs 300 ug). Delete this line if rate_hz changes.
+  white_noise_stddev: 150 ug
+  # [est] Fixed offset picked once per run. The datasheet's 40 ug might be a
+  # worst case, so we divide by 3 (cleaner).
+  turn_on_bias: 13.3 ug
+  bias_instability: 18 ug             # [ds] how much the offset drifts
+  # [plot] How fast it drifts: the plot's low point (~20 s) / 1.89, the
+  # standard conversion (Li et al. 2016, see README).
+  bias_correlation_time: 10 s
+
+gyro:
+  noise_density: 8.5 deg/h/rtHz       # [ds]
+  # [plot] Noise per 100 Hz sample, same reasoning as accel (75 vs 85 deg/h).
+  white_noise_stddev: 75 deg/h
+  # [est] Datasheet 0.004 deg/s divided by 3, same reasoning as accel.
+  turn_on_bias: 0.00133 deg/s
+  bias_instability: 1.5 deg/h         # [ds]
+  # [plot] The plot's low point (~600 s) / 1.89, same as accel.
+  bias_correlation_time: 300 s
+
+# Orientation error added to CARLA's perfect orientation.
+# Leave this section out for an IMU that doesn't output orientation.
+orientation:
+  # [ds] Uses the "driving" accuracy (0.5 deg tilt, 2 deg heading), not the
+  # standing-still one. [est] It might be a worst case, so we divide by 3.
+  roll_pitch_stddev: 0.167 deg
+  heading_stddev: 0.667 deg
+  # [est] How fast the error changes; not in the datasheet. About one
+  # manoeuvre long. This changes how the error moves, not how big it is.
+  correlation_time: 10 s
+
+# Same seed + same bag = same output, so LIO-SAM runs are comparable.
+seed: 0
