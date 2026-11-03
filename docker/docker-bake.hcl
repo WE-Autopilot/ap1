@@ -11,9 +11,6 @@
 //   docker/base.Dockerfile      base-<variant> (stage `base`), and the shared pipeline
 //                               that turns a module into <module>-<variant> (stage `deploy`)
 //                               and <module>-dev-<variant> (stage `develop`)
-//
-// Variables are read from the environment, under the same names compose uses
-// (modules/docker-compose.yaml), e.g. AP1_UID=$(id -u) for the dev image.
 
 variable "AP1_REGISTRY" {
   default = "ghcr.io/we-autopilot/ap1"
@@ -31,14 +28,6 @@ variable "GIT_SHA" {
 // GitHub Actions sets CI=true, which turns on the GitHub Actions layer cache
 variable "CI" {
   default = false
-}
-
-// Dev images give their "ubuntu" user the host's IDs, so bind-mounted files keep their owner
-variable "AP1_UID" {
-  default = "1000"
-}
-variable "AP1_GID" {
-  default = "1000"
 }
 
 // Hardware variants. TODO: add arm64 image for Jetson Orin deployment
@@ -125,7 +114,7 @@ target "perception" {
   cache-to   = cache_to("perception-${v.name}")
 }
 
-// Dev image: dependencies + dev tools + host user's IDs; source is mounted and built at runtime
+// Dev image: dependencies + dev tools; source is mounted and built at runtime
 target "perception-dev" {
   matrix     = { v = VARIANTS }
   name       = "perception-dev-${v.name}"
@@ -135,10 +124,6 @@ target "perception-dev" {
   contexts = {
     "module-source" = "target:perception-source-${v.name}"
     "module-deps"   = "target:perception-deps-${v.name}"
-  }
-  args = {
-    USER_UID = AP1_UID
-    USER_GID = AP1_GID
   }
   tags = ["${AP1_REGISTRY}/perception:${v.name}-dev"]
 }

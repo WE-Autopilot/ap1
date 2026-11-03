@@ -9,7 +9,6 @@
 #   AP1_TAG_SUFFIX  appended to the deploy image tag: empty for local builds,
 #                   -<git sha> to pin an exact CI-built image  [empty]
 #   AP1_DEVICE      cpu | cuda   inference device  [cpu]; cuda fails loudly without a GPU
-#   AP1_UID/GID     user and group containers run as; must match yours  [1000]
 #   ROS_AUTOMATIC_DISCOVERY_RANGE                  [LOCALHOST]
 #
 # Override files, layered on top with extra -f flags:
@@ -23,19 +22,8 @@ x-ros: &ros
   # ROS 2 discovery and shared-memory transport between containers and the host
   network_mode: host
   ipc: host
-  # Run as the host user. Fast DDS shared memory does not work between processes
-  # of different users, so a container running as anyone else would see native
-  # nodes' topics but never exchange data with them. UDP-only transport (below)
-  # avoids that, but ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST, the default here,
-  # forces shared memory back on and ignores FASTDDS_BUILTIN_TRANSPORTS.
-  # TODO: once every module runs in Docker, drop this (and ROS_HOME below) and run
-  # deploy containers as root like WATonomous. Needed only while native nodes remain.
-  user: "${AP1_UID:-1000}:${AP1_GID:-1000}"
   environment:
-    # Writable for any UID; the host UID may have no home in the image
-    - ROS_HOME=/tmp/ros
-    # UDP only, no shared memory, so containers and nodes running as different
-    # users still exchange data (takes effect with discovery range SUBNET)
+    # UDP only when talking across machines (takes effect with discovery range SUBNET)
     - FASTDDS_BUILTIN_TRANSPORTS=${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
     - ROS_DOMAIN_ID
     - RMW_IMPLEMENTATION

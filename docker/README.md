@@ -171,7 +171,6 @@ Compose and bake read these from your shell. All are optional:
 |---|---|---|
 | `AP1_VARIANT` | `cpu` | image variant compose runs: `cpu` or `gpu` |
 | `AP1_DEVICE` | `cpu` | YOLO inference device in the deploy service: `cpu` or `cuda` |
-| `AP1_UID`, `AP1_GID` | `1000` | user the containers run as, and the dev image's user (at build time) |
 | `AP1_REGISTRY` | `ghcr.io/we-autopilot/ap1` | image name prefix |
 | `AP1_TAG_SUFFIX` | empty | appended to the deploy image tag, e.g. `-<git sha>` to run an exact CI-built image |
 | `ROS_AUTOMATIC_DISCOVERY_RANGE` | `LOCALHOST` | how far ROS discovery reaches |
@@ -191,13 +190,11 @@ case-sensitive, and ROS silently falls back to localhost-only on an invalid one
 (e.g. `subnet`). For native (non-Docker) work on shared networks, put
 `export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` in your shell rc too.
 
-Containers run as `AP1_UID:AP1_GID`, which must be your host user, so files
-created in mounted folders stay yours. The default, 1000, is the first user on
-most Linux machines. If `id -u` or `id -g` prints something else, put
-`export AP1_UID=$(id -u) AP1_GID=$(id -g)` in your shell rc and rebuild the dev
-image. Fast DDS shared memory only works between processes of the same user, so
-native nodes must run as that user too (don't use `sudo`). If you previously
-ran containers as root, remove their leftover shared-memory files once with
+Both `deploy` and `develop` containers run as Ubuntu 24.04's built-in `ubuntu`
+user (`1000:1000`), so files created in mounted folders belong to the standard
+Linux host user (`1000:1000`) and Fast DDS shared memory works across containers
+and host tools. If you previously ran containers as root, remove their leftover
+shared-memory files once with
 `sudo rm /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*` while no ROS nodes are running.
 
 ## Adding a dependency
@@ -252,8 +249,7 @@ docker/                       how images are built
    - `deploy` copies only `/opt/ap1` on top of the dependencies, with no sources
      or build tree. This image runs on the car.
    - `develop` is `dependencies` plus dev tools, with no prebuilt workspace:
-     you build the mounted source in `/ws`. Its `ubuntu` user takes your
-     UID/GID, so files created in mounted folders stay yours.
+     you build the mounted source in `/ws`.
 
 Dev build output lives in named volumes, one set per variant
 (`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
