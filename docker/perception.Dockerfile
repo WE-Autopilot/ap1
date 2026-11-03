@@ -1,8 +1,7 @@
-# Perception module. Defines only what's specific to perception;
+# Perception module. Copies over source code built by colcon and relevant to perception.
+# Also present as an intermediary for dependency management in build stages.
 
 ########################## source ##########################
-# Everything colcon builds in this module.
-# Here we build ap1 messages (for object class list specifically) and perception
 FROM base AS source
 WORKDIR ${AP1_WS}/src
 # ap1_msgs: the message package every module shares
