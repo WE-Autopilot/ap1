@@ -41,8 +41,7 @@ variable "AP1_GID" {
   default = "1000"
 }
 
-// Hardware variants. Adding one (e.g. Jetson) means adding an entry here;
-// module Dockerfiles don't change.
+// Hardware variants. TODO: add arm64 image for Jetson Orin deployment
 variable "VARIANTS" {
   default = [
     { name = "cpu", image = "ubuntu:24.04", gpu = "0" },
