@@ -1,18 +1,15 @@
 # AP1 module services: how each module runs on the car and in integration tests.
-# Images are built by docker/docker-bake.hcl. Run from the repo root, e.g.
-#   docker compose -f modules/docker-compose.yaml up -d perception
+# Service names match the targets in docker/docker-bake.hcl (e.g. perception-cpu,
+# perception-gpu). The root .env file sets COMPOSE_FILE so you can run from the
+# repo root without -f flags:
+#   docker compose up -d perception-cpu
 # See docker/README.md for the everyday commands.
 #
 # Settings, read from your shell (defaults in brackets):
 #   AP1_REGISTRY    image registry prefix          [ghcr.io/we-autopilot/ap1]
-#   AP1_VARIANT     cpu | gpu    image variant     [cpu]
 #   AP1_TAG_SUFFIX  appended to the deploy image tag: empty for local builds,
 #                   -<git sha> to pin an exact CI-built image  [empty]
 #   ROS_AUTOMATIC_DISCOVERY_RANGE                  [LOCALHOST]
-#
-# Override files, layered on top with extra -f flags:
-#   docker-compose.dev.yaml   dev containers (source mounted, built inside)
-#   docker-compose.gpu.yaml   GPU access, with AP1_VARIANT=gpu
 
 name: ap1
 
@@ -33,10 +30,10 @@ x-ros: &ros
 
 services:
   #################### PERCEPTION ####################
-  perception:
+  perception-cpu: &perception
     <<: *ros
-    profiles: [perception]
-    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:${AP1_VARIANT:-cpu}${AP1_TAG_SUFFIX:-}
+    profiles: [perception-cpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:cpu${AP1_TAG_SUFFIX:-}
     restart: unless-stopped
     volumes:
       # The model is in Git LFS, so it's mounted straight from the checkout
@@ -45,4 +42,10 @@ services:
     command: >
       ros2 launch ap1_perception yolo.launch.py
       model_path:=/opt/ap1/models/yolo11n.onnx
+
+  perception-gpu:
+    <<: *perception
+    profiles: [perception-gpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:gpu${AP1_TAG_SUFFIX:-}
+    gpus: all
   # TODO: Add other modules if/when they employ docker e.g. planning, control, mapping, localization

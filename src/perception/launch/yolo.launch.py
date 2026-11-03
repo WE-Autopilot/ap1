@@ -54,12 +54,14 @@ def generate_launch_description():
         if site_packages else []
     )
 
+    default_device = {'1': 'cuda', '0': 'cpu'}.get(os.environ.get('AP1_GPU'), 'auto')
+
     args = [
         DeclareLaunchArgument(
             'model_path', default_value='',
             description='Path to the YOLO .onnx model; empty uses the model bundled in the package'),
         DeclareLaunchArgument(
-            'device', default_value='auto',
+            'device', default_value=default_device,
             description="'cuda' (fail if no GPU), 'cpu', or 'auto' (GPU when available)"),
     ]
 
