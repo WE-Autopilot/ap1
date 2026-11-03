@@ -1,5 +1,5 @@
 // Build graph for AP1 images: a base image per hardware variant, then modules on top.
-// Used locally and by CI, so builds are defined in exactly one place.
+// Docker bake and HCL file reference: https://docs.docker.com/build/bake/reference/ 
 //
 // Run from the repo root:
 //   docker buildx bake -f docker/docker-bake.hcl --load perception-cpu
@@ -20,12 +20,11 @@ variable "ROS_DISTRO" {
   default = "jazzy"
 }
 
-// Set in CI to add an immutable per-commit tag
 variable "GIT_SHA" {
   default = ""
 }
 
-// GitHub Actions sets CI=true, which turns on the GitHub Actions layer cache
+// GitHub Actions sets CI=true, turns on the GitHub Actions layer cache
 variable "CI" {
   default = false
 }
@@ -34,7 +33,6 @@ variable "CI" {
 variable "VARIANTS" {
   default = [
     { name = "cpu", image = "ubuntu:24.04", gpu = "0" },
-    // CUDA/cuDNN must match onnxruntime-gpu in docker/config/pip-constraints.txt
     { name = "gpu", image = "nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04", gpu = "1" },
   ]
 }
@@ -55,9 +53,10 @@ group "default" {
 
 ############################ base ############################
 
+# Each target defines a docker build invocation
 target "base" {
-  matrix     = { v = VARIANTS }
   name       = "base-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/base.Dockerfile"
   target     = "base"
@@ -74,8 +73,8 @@ target "base" {
 ######################### perception #########################
 
 target "perception-source" {
-  matrix     = { v = VARIANTS }
   name       = "perception-source-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/perception.Dockerfile"
   target     = "source"
@@ -85,8 +84,8 @@ target "perception-source" {
 }
 
 target "perception-deps" {
-  matrix     = { v = VARIANTS }
   name       = "perception-deps-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/perception.Dockerfile"
   target     = "dependencies"
@@ -97,8 +96,8 @@ target "perception-deps" {
 
 // Deploy image: what runs on the car / in integration tests
 target "perception" {
-  matrix     = { v = VARIANTS }
   name       = "perception-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/base.Dockerfile"
   target     = "deploy"
@@ -116,8 +115,8 @@ target "perception" {
 
 // Dev image: dependencies + dev tools; source is mounted and built at runtime
 target "perception-dev" {
-  matrix     = { v = VARIANTS }
   name       = "perception-dev-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/base.Dockerfile"
   target     = "develop"

@@ -127,11 +127,10 @@ COPY --from=build ${AP1_INSTALL} ${AP1_INSTALL}
 USER ubuntu
 
 ########################## develop ##########################
-# Built from dependencies, not deploy, so there is one copy of the workspace:
-# the mounted source, built with colcon in ${AP1_WS}.
 FROM dependencies AS develop
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# install dev tools and enforce usage of ubuntu user 1000:1000
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-vcstool gdb less nano sudo tmux vim && \
     rm -rf /var/lib/apt/lists/* && \
