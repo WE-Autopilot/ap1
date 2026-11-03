@@ -1,4 +1,5 @@
 **/.git
+.env
 **/build
 **/install
 **/log
@@ -8,7 +9,6 @@
 
 # Models and bags are mounted at runtime, never baked into images
 **/*.onnx
-models
 bags
 *.bag
 *.db3

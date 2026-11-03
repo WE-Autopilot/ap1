@@ -75,8 +75,9 @@ then behaves like an Ubuntu machine.
 Docker Desktop runs containers in a Linux VM, on both Intel and Apple Silicon
 (Apple Silicon builds arm64 images natively).
 
-- Every command below works with the CPU variant. There's no GPU variant:
-  `docker-compose.gpu.yaml` and `device:=cuda` need an NVIDIA GPU.
+- Every command below works with the CPU variant (`-cpu` targets and services).
+  There's no GPU variant on macOS: `-gpu` services and `device:=cuda` need an
+  NVIDIA GPU.
 - Keep the repo under your home folder. Docker Desktop shares `/Users` with
   containers by default.
 - Host networking means the VM's network, not your Mac's. Containers reach each
@@ -87,19 +88,14 @@ Docker Desktop runs containers in a Linux VM, on both Intel and Apple Silicon
 
 ## Everyday use
 
-Images are built with `docker buildx bake` and run with `docker compose`. Run
-everything from the repo root, in a shell where compose knows the module files:
-
-```bash
-export COMPOSE_FILE=modules/docker-compose.yaml:modules/docker-compose.dev.yaml
-```
-
-Then build the dev image, start the dev container and open a shell in it:
+Images are built with `docker buildx bake` and run with `docker compose` from
+the repo root (the root `.env` file points `docker compose` at `modules/`, and
+service names match the `bake` targets):
 
 ```bash
 docker buildx bake -f docker/docker-bake.hcl --load perception-dev-cpu
-docker compose up -d perception-dev
-docker compose exec perception-dev bash
+docker compose up -d perception-dev-cpu
+docker compose exec perception-dev-cpu bash
 ```
 
 Inside the container, `src/msgs` and `src/perception` from your checkout are
@@ -109,17 +105,16 @@ has no prebuilt copy of them: build both in the container:
 ```bash
 colcon build --symlink-install     # builds into /ws/install (kept across restarts)
 source install/setup.bash
-ros2 launch ap1_perception yolo.launch.py \
-    model_path:=/opt/ap1/models/yolo11n.onnx device:=cpu   # or device:=cuda
+ros2 launch ap1_perception yolo.launch.py
 ```
 
 The deploy image runs the YOLO node on its own:
 
 ```bash
 docker buildx bake -f docker/docker-bake.hcl --load perception-cpu
-docker compose up -d perception        # start the YOLO node
-docker compose logs -f perception      # follow its logs
-docker compose --profile '*' down      # stop all AP1 containers (keeps dev build volumes)
+docker compose up -d perception-cpu        # start the YOLO node
+docker compose logs -f perception-cpu      # follow its logs
+docker compose --profile '*' down          # stop all AP1 containers (keeps dev build volumes)
 ```
 
 Compose never builds images. After changing code or Dockerfiles, rebuild with
@@ -134,33 +129,35 @@ Both tests run in a second container from the deploy image, with
 Smoke test (imports, cv_bridge, YOLO inference):
 
 ```bash
-docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception \
+docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception-cpu \
     python3 /tests/perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
 ```
 
-End-to-end test: with the YOLO node running (`docker compose up -d perception`),
+End-to-end test: with the YOLO node running (`docker compose up -d perception-cpu`),
 it feeds the node a stop-sign photo (downloaded to a temp folder and deleted
 afterwards) with camera info and a point cloud over ROS, and checks the
 published entity. Run it with the same variant as the running node.
 
 ```bash
-docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception \
+docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception-cpu \
     python3 /tests/perception_e2e.py
-docker compose logs perception        # what the node logged during the test
+docker compose logs perception-cpu    # what the node logged during the test
 ```
 
 ### GPU
 
-For the GPU variant, build the `-gpu` targets (`perception-gpu`,
-`perception-dev-gpu`) and set this before running compose:
+For the GPU variant, use the `-gpu` targets and service names (`perception-gpu`,
+`perception-dev-gpu`) in place of `-cpu`:
 
 ```bash
-export AP1_VARIANT=gpu AP1_DEVICE=cuda
-export COMPOSE_FILE=$COMPOSE_FILE:modules/docker-compose.gpu.yaml
+docker buildx bake -f docker/docker-bake.hcl --load perception-dev-gpu
+docker compose up -d perception-dev-gpu
+docker compose exec perception-dev-gpu bash
 ```
 
-`device:=cuda` fails at startup if the GPU isn't usable, rather than silently
-running on CPU. `device:=auto` uses the GPU when available. The smoke test
+The GPU image sets `AP1_GPU=1`, which makes `yolo.launch.py` default to
+`device:=cuda` (failing at startup if the GPU isn't usable, rather than silently
+running on CPU). `device:=auto` uses the GPU when available. The smoke test
 takes `--device cuda` the same way.
 
 ### Settings
@@ -169,8 +166,6 @@ Compose and bake read these from your shell. All are optional:
 
 | Variable | Default | What it sets |
 |---|---|---|
-| `AP1_VARIANT` | `cpu` | image variant compose runs: `cpu` or `gpu` |
-| `AP1_DEVICE` | `cpu` | YOLO inference device in the deploy service: `cpu` or `cuda` |
 | `AP1_REGISTRY` | `ghcr.io/we-autopilot/ap1` | image name prefix |
 | `AP1_TAG_SUFFIX` | empty | appended to the deploy image tag, e.g. `-<git sha>` to run an exact CI-built image |
 | `ROS_AUTOMATIC_DISCOVERY_RANGE` | `LOCALHOST` | how far ROS discovery reaches |
@@ -216,12 +211,12 @@ Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
 ## Layout
 
 ```
-.dockerignore                 keeps models, bags, build output out of images
+.env                          points docker compose at modules/
+.dockerignore                 keeps bags and build output out of images
 bags/                         recordings, mounted at /ws/bags (contents gitignored)
-modules/                      how modules run (one service per module)
+modules/                      how modules run (CPU and GPU services per module)
   docker-compose.yaml         deploy services: mounts, networking, launch commands
   docker-compose.dev.yaml     dev services: extend deploy, mount source, idle
-  docker-compose.gpu.yaml     GPU access, added for the gpu variant
 docker/                       how images are built
   base.Dockerfile             ROS Jazzy base, plus the shared pipeline:
                               rosdep scan -> install -> build -> deploy/develop
@@ -253,7 +248,7 @@ docker/                       how images are built
 
 Dev build output lives in named volumes, one set per variant
 (`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
-so switching `AP1_VARIANT` never reuses a build compiled against the other
+so CPU and GPU dev containers never reuse a build compiled against the other
 image. `docker compose --profile '*' down` keeps them; delete them with
 `docker volume rm` to start clean.
 
