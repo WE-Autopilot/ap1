@@ -9,6 +9,11 @@ from launch_ros.actions import Node
 
 def _find_venv_site_packages() -> Path:
     override = os.environ.get('AP1_PERCEPTION_VENV')
+    # 'none' turns the lookup off. The Docker images set it: they install every
+    # dependency system-wide, and a host .venv seen through the dev container's
+    # source mount must not shadow them.
+    if override == 'none':
+        raise RuntimeError('venv lookup disabled (AP1_PERCEPTION_VENV=none)')
     candidates = []
     if override:
         override_path = Path(override).expanduser()
