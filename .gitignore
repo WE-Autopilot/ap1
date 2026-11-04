@@ -27,3 +27,6 @@ __pycache__/
 # folder itself is tracked so Docker never creates it as root.
 /bags/*
 !/bags/.gitkeep
+
+# Per-user docker compose settings (see docker/README.md, Setup)
+/.env
