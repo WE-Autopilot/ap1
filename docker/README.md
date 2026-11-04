@@ -31,18 +31,25 @@ YOLO node's `device` parameter picks the hardware.
 3. The YOLO model is mounted straight from `src/perception/ap1_perception/yolo/yolo11n.onnx`,
    which is in Git LFS. If that file is a small text pointer instead of ~10 MB,
    run `git lfs pull`.
+4. Create a `.env` file in the repo root that tells `docker compose` which
+   module files to chain together. Run this once from the repo root:
+   ```bash
+   echo 'COMPOSE_FILE=modules/docker-compose.yaml:modules/docker-compose.dev.yaml' > .env
+   ```
+   The same file covers CPU and GPU: both sets of services are in those two
+   files, and you pick one by service name (`perception-cpu` or `perception-gpu`,
+   see [GPU](#gpu)). Compose only reads `.env` from the directory you run it in,
+   so always run `docker compose` from the repo root. The file is gitignored, so
+   you can also put your own [settings](#settings) in it.
 
 ### Windows (WSL 2)
 
 Run everything, including the repo and Docker, inside an Ubuntu WSL distro. It
 then behaves like an Ubuntu machine.
 
-1. In an admin PowerShell: `wsl --install -d Ubuntu-24.04`, reboot, and open
-   Ubuntu from the Start menu.
-2. Clone the repo inside WSL (e.g. `~/code/ap1`), not under `/mnt/c`. Mounts
-   from the Windows drive are slow and lose file ownership, and a Windows-side
-   clone can check out shell scripts (like the container entrypoint) with CRLF
-   line endings, which breaks them.
+1. (if you do not have an Ubuntu 24.04 install) In an admin PowerShell: `wsl --install -d Ubuntu-24.04`,
+   reboot, and open Ubuntu from the Start menu.
+2. Clone the repo inside WSL (e.g. `~/code/ap1`), not under `/mnt/c`.
 3. Install Docker Engine inside WSL with the Ubuntu steps above. It needs
    systemd, which new WSL installs turn on. Check that `/etc/wsl.conf` contains
    ```ini
@@ -84,13 +91,12 @@ Docker Desktop runs containers in a Linux VM, on both Intel and Apple Silicon
   other fine (dev container, smoke and end-to-end tests), but ROS discovery doesn't reach
   other machines, so `SUBNET` won't find the car or teammates. Use a Linux
   machine for that.
-- CI only builds x86_64 images, so arm64 builds aren't tested there.
 
 ## Everyday use
 
 Images are built with `docker buildx bake` and run with `docker compose` from
-the repo root (the root `.env` file points `docker compose` at `modules/`, and
-service names match the `bake` targets):
+the repo root (your `.env` file from [Setup](#setup) step 4 points
+`docker compose` at `modules/`, and service names match the `bake` targets):
 
 ```bash
 docker buildx bake -f docker/docker-bake.hcl --load perception-dev-cpu
@@ -105,20 +111,26 @@ has no prebuilt copy of them: build both in the container:
 ```bash
 colcon build --symlink-install     # builds into /ws/install (kept across restarts)
 source install/setup.bash
+```
+
+Try launching the YOLO node from the `ap1_perception` ROS package:
+
+```bash
 ros2 launch ap1_perception yolo.launch.py
 ```
 
-The deploy image runs the YOLO node on its own:
+The deploy image runs the YOLO node on its own.
+In another terminal, try:
 
 ```bash
-docker buildx bake -f docker/docker-bake.hcl --load perception-cpu
-docker compose up -d perception-cpu        # start the YOLO node
+docker buildx bake -f docker/docker-bake.hcl --load perception-cpu # build the perception cpu image
+docker compose up -d perception-cpu        # start the perception cpu service, which starts the YOLO node
 docker compose logs -f perception-cpu      # follow its logs
 docker compose --profile '*' down          # stop all AP1 containers (keeps dev build volumes)
 ```
 
-Compose never builds images. After changing code or Dockerfiles, rebuild with
-bake, then `docker compose up -d` again recreates the container from the new
+After changing code or Dockerfiles, rebuild with bake,
+then `docker compose up -d` will recreate the container from the new
 image. If an image isn't built locally, compose pulls it from the registry.
 
 ### Tests
@@ -162,7 +174,8 @@ takes `--device cuda` the same way.
 
 ### Settings
 
-Compose and bake read these from your shell. All are optional:
+Compose reads these from your shell or from your `.env` file. Bake reads only
+from your shell, so set `AP1_REGISTRY` there if you change it. All are optional:
 
 | Variable | Default | What it sets |
 |---|---|---|
@@ -211,7 +224,7 @@ Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
 ## Layout
 
 ```
-.env                          points docker compose at modules/
+.env                          yours, not tracked: points docker compose at modules/ (Setup step 4)
 .dockerignore                 keeps bags and build output out of images
 bags/                         recordings, mounted at /ws/bags (contents gitignored)
 modules/                      how modules run (CPU and GPU services per module)
