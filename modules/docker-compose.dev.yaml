@@ -5,12 +5,12 @@
 
 services:
   #################### PERCEPTION ####################
-  perception-dev:
+  perception-dev-cpu:
     extends:
       file: docker-compose.yaml
-      service: perception
-    profiles: [perception-dev]
-    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:${AP1_VARIANT:-cpu}-dev
+      service: perception-cpu
+    profiles: [perception-dev-cpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:cpu-dev
     # Only deploy services come back after a crash or reboot
     restart: "no"
     volumes:
@@ -20,17 +20,33 @@ services:
       # colcon builds (see docker/perception.Dockerfile)
       - ../docker/config/pyproject-mask.toml:/ws/src/perception/pyproject.toml:ro
       # Named volumes keep incremental colcon builds across container restarts
-      - perception-build:/ws/build
-      - perception-install:/ws/install
-      - perception-log:/ws/log
+      - perception-build-cpu:/ws/build
+      - perception-install-cpu:/ws/install
+      - perception-log-cpu:/ws/log
+    command: sleep infinity
+
+  perception-dev-gpu:
+    extends:
+      file: docker-compose.yaml
+      service: perception-gpu
+    profiles: [perception-dev-gpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:gpu-dev
+    restart: "no"
+    volumes:
+      - ../src/msgs:/ws/src/msgs
+      - ../src/perception:/ws/src/perception
+      - ../docker/config/pyproject-mask.toml:/ws/src/perception/pyproject.toml:ro
+      - perception-build-gpu:/ws/build
+      - perception-install-gpu:/ws/install
+      - perception-log-gpu:/ws/log
     command: sleep infinity
 
 # One set per variant: a build tree compiled against the CPU image must not be
 # reused in the GPU one, and the other way round
 volumes:
-  perception-build:
-    name: ap1_perception-build-${AP1_VARIANT:-cpu}
-  perception-install:
-    name: ap1_perception-install-${AP1_VARIANT:-cpu}
-  perception-log:
-    name: ap1_perception-log-${AP1_VARIANT:-cpu}
+  perception-build-cpu:
+  perception-install-cpu:
+  perception-log-cpu:
+  perception-build-gpu:
+  perception-install-gpu:
+  perception-log-gpu:

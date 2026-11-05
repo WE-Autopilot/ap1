@@ -9,6 +9,11 @@ from launch_ros.actions import Node
 
 def _find_venv_site_packages() -> Path:
     override = os.environ.get('AP1_PERCEPTION_VENV')
+    # 'none' turns the lookup off. The Docker images set it: they install every
+    # dependency system-wide, and a host .venv seen through the dev container's
+    # source mount must not shadow them.
+    if override == 'none':
+        raise RuntimeError('venv lookup disabled (AP1_PERCEPTION_VENV=none)')
     candidates = []
     if override:
         override_path = Path(override).expanduser()
@@ -49,12 +54,14 @@ def generate_launch_description():
         if site_packages else []
     )
 
+    default_device = {'1': 'cuda', '0': 'cpu'}.get(os.environ.get('AP1_GPU'), 'auto')
+
     args = [
         DeclareLaunchArgument(
             'model_path', default_value='',
             description='Path to the YOLO .onnx model; empty uses the model bundled in the package'),
         DeclareLaunchArgument(
-            'device', default_value='auto',
+            'device', default_value=default_device,
             description="'cuda' (fail if no GPU), 'cpu', or 'auto' (GPU when available)"),
     ]
 
