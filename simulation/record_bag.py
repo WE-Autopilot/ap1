@@ -10,8 +10,9 @@ and comes back to the start (so LIO-SAM's loop closure triggers). Every
 sim tick is written straight into a rosbag2 bag, so no LiDAR slice is lost.
 
     source /opt/ros/jazzy/setup.bash
-    python3 simulation/record_bag.py                      # whole map
-    python3 simulation/record_bag.py --short              # smallest closed loop
+    python3 -m pip install carla==0.9.16 --break-system-packages  # match the server version, skip if already installed
+    python3 simulation/record_bag.py                              # whole map
+    python3 simulation/record_bag.py --short                      # smallest closed loop
     python3 simulation/record_bag.py --host my-pc --filter
 
 See simulation/README.md ("Recording a raw bag").

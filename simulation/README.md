@@ -63,6 +63,27 @@ python3 simulation/record_bag.py --filter       # also write the _filtered bag
 
 - **Setup.** Install the `carla` Python package matching the server
   (`pip install carla==0.9.16`); a mismatch can fail or misbehave.
+- **CARLA on Windows, recorder in WSL.** By default WSL has its own network, so
+  `localhost` doesn't reach Windows. To make it work, turn on mirrored networking
+  (Windows 11 22H2 or later) by adding this to `C:\Users\<you>\.wslconfig`, then
+  run `wsl --shutdown` from Windows and reopen WSL:
+
+  ```ini
+  [wsl2]
+  networkingMode=mirrored
+  ```
+
+- **Passing the IP instead.** Without mirrored networking, or with CARLA on
+  another machine, give the server's IP with `--host` (or set `$CARLA_HOST`):
+
+  ```bash
+  # CARLA on this PC's Windows, recorder in WSL. The IP can change when WSL restarts.
+  python3 simulation/record_bag.py --host "$(ip route show default | awk '{print $3}')"
+
+  # CARLA over Tailscale. Run `tailscale ip -4` on the CARLA machine to get its IP.
+  python3 simulation/record_bag.py --host <tailscale-ip>
+  ```
+
 - **Route.** Plans a loop through every road (one direction each) that ends at
   the spawn point, so LIO-SAM's loop closure triggers. `--short` skips the
   extra roads. The drive is the same every run, at 10 km/h.
