@@ -1,0 +1,48 @@
+# AP1 module services: how each module runs on the car and in integration tests.
+# Service names match the targets in docker/docker-bake.hcl (e.g. perception-cpu,
+# perception-gpu). Each user creates a root .env file that sets COMPOSE_FILE
+# (docker/README.md, Setup), so you can run from the repo root without -f flags:
+#   docker compose up -d perception-cpu
+# See docker/README.md for the everyday commands.
+#
+# Settings, read from your shell or .env (defaults in brackets):
+#   AP1_REGISTRY    image registry prefix          [ghcr.io/we-autopilot/ap1]
+#   AP1_TAG_SUFFIX  appended to the deploy image tag: empty for local builds,
+#                   -<git sha> to pin an exact CI-built image  [empty]
+#   ROS_AUTOMATIC_DISCOVERY_RANGE                  [LOCALHOST]
+
+name: ap1
+
+# block of settings that all ros services share, notice the <<: *ros in the perception service
+# any top level key starting with x- is ignored by compose, so this is only settings not a service
+x-ros: &ros
+  init: true
+  # ROS 2 discovery and shared-memory transport between containers and the host (native nodes)
+  network_mode: host
+  ipc: host
+  environment:
+    - FASTDDS_BUILTIN_TRANSPORTS=${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
+    - ROS_DOMAIN_ID
+    - RMW_IMPLEMENTATION
+    # Keep ROS 2 discovery on this machine unless told otherwise
+    # Export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET to talk to other machines (car, laptops).
+    - ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE:-LOCALHOST}
+
+services:
+  #################### PERCEPTION ####################
+  perception-cpu: &perception
+    <<: *ros
+    profiles: [perception-cpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:cpu${AP1_TAG_SUFFIX:-}
+    restart: unless-stopped
+    volumes:
+      - ../bags:/ws/bags
+    # The YOLO model is in the image (installed with ap1_perception)
+    command: ros2 launch ap1_perception yolo.launch.py
+
+  perception-gpu:
+    <<: *perception
+    profiles: [perception-gpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:gpu${AP1_TAG_SUFFIX:-}
+    gpus: all
+  # TODO: Add other modules if/when they employ docker e.g. planning, control, mapping, localization

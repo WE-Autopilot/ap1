@@ -1,0 +1,21 @@
+**/.git
+.env
+**/build
+**/install
+**/log
+**/.venv
+**/__pycache__
+**/*.egg-info
+
+# The UFLD model (426 MB) needs torch, which the images don't have. Every other
+# model (src/perception/models/) is baked into the images.
+src/perception/ap1_perception/ufld/model.onnx
+
+# Bags are mounted at runtime
+bags
+*.bag
+*.db3
+*.mcap
+
+# External repos imported by ap1_setup.sh
+src/external

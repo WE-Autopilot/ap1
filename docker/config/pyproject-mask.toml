@@ -1,0 +1,3 @@
+# Mounted over src/perception/pyproject.toml in dev containers (modules/docker-compose.dev.yaml).
+# That file is for the native uv setup, and its [project] table breaks colcon
+# builds. Setuptools needs a regular file here, so /dev/null won't do.
