@@ -23,7 +23,7 @@ name: MicroStrain 3DM-CV7-AHRS
 version: 1
 
 topics:
-  input: /carla/hero/imu              # [est] assumed raw bag topic (see README)
+  input: /carla/hero/imu              # raw bag topic, set by record_bag.py
   output: /sensing/imu/data           # [ICD]
 # [ICD] Frames & Transforms page. The raw bag's /tf_static must use this same
 # name (see README), so change both together.
