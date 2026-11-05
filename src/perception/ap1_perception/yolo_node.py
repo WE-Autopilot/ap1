@@ -1,5 +1,6 @@
 import numpy as np
 import rclpy
+from rcl_interfaces.msg import ParameterDescriptor, SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from geometry_msgs.msg import PoseArray, PoseStamped
@@ -47,7 +48,8 @@ def normal_to_quaternion(normal: np.ndarray) -> tuple[float, float, float, float
     return (axis[0] * s, axis[1] * s, axis[2] * s, np.cos(angle / 2.0))
 
 
-def ransac_plane_normal(points: np.ndarray) -> np.ndarray:
+def ransac_plane_normal(points: np.ndarray, max_retry: int = 20, p_thresh: float = 1.0,
+                        r_thresh: float = 0.7, l_thresh: float = 0.01) -> np.ndarray:
     """Fit a plane to 3D points using GroundRANSAC and return the unit normal.
 
     The normal is oriented to face the camera (negative z in camera frame).
@@ -55,7 +57,8 @@ def ransac_plane_normal(points: np.ndarray) -> np.ndarray:
     centroid = np.median(points, axis=0)
     # Initial estimate: plane at the centroid with normal pointing toward the camera.
     initial = Plane([0.0, 0.0, -1.0], centroid)
-    ransac = GroundRANSAC(estimate=initial, max_retry=20, p_thresh=1, r_thresh=0.7, l_thresh=0.01)
+    ransac = GroundRANSAC(estimate=initial, max_retry=max_retry, p_thresh=p_thresh,
+                          r_thresh=r_thresh, l_thresh=l_thresh)
     plane = ransac(points)
 
     normal = plane.normal
@@ -71,11 +74,32 @@ class YoloNode(Node):
         self._bridge = CvBridge()
         self._K: np.ndarray | None = None
 
+        # Startup-only parameters: changing these needs a node restart (not a rebuild).
         # Empty model_path falls back to the model bundled in the package.
-        model_path = self.declare_parameter('model_path', '').value
-        device = self.declare_parameter('device', 'auto').value
+        model_path = self._declare('model_path', '', 'YOLO .onnx model; empty uses the bundled model', True)
+        device = self._declare('device', 'auto', "'auto', 'cuda' or 'cpu'", True)
+        sync_queue_size = self._declare('sync_queue_size', 5, 'Image/point cloud sync queue length', True)
+        sync_slop = self._declare('sync_slop', 0.05, 'Max image/point cloud stamp gap (s)', True)
+
+        # Tuning parameters: can also be changed live with `ros2 param set`.
+        self._declare('conf_threshold', 0.25, 'Min detection confidence, 0-1')
+        self._declare('iou_threshold', 0.7, 'NMS IoU threshold, 0-1 (ignored by end-to-end exports)')
+        self._declare('max_detections', 300, 'Max detections per frame')
+        self._declare('classes', [11], 'COCO class ids to keep (11 = stop sign)')
+        self._declare('min_box_points', 3, 'Min point cloud points inside a box to publish it')
+        self._declare('ransac.max_retry', 20, 'RANSAC iterations per box')
+        self._declare('ransac.p_thresh', 1.0, 'RANSAC prune distance (m)')
+        self._declare('ransac.r_thresh', 0.7, 'RANSAC inlier ratio to accept a plane')
+        self._declare('ransac.l_thresh', 0.01, 'RANSAC inlier distance (m)')
+
         self._model = YOLO(model_path=model_path or None, device=device)
-        self.get_logger().info(f"YOLO loaded, running on {self._model.provider}.")
+        self._apply_tuning()
+        self.add_on_set_parameters_callback(self._validate_parameters)
+        self.add_post_set_parameters_callback(lambda _params: self._apply_tuning())
+        self.get_logger().info(
+            f"YOLO loaded, running on {self._model.provider} "
+            f"(conf={self._model.conf}, classes={self._model.classes.tolist()})."
+        )
 
         self._pub = self.create_publisher(EntityStateArray, PUBLISH_TOPIC, 10)
 
@@ -84,9 +108,40 @@ class YoloNode(Node):
         color_sub = Subscriber(self, Image, COLOR_TOPIC)
         pc_sub = Subscriber(self, PointCloud2, PC_TOPIC)
         self._sync = ApproximateTimeSynchronizer(
-            [color_sub, pc_sub], queue_size=5, slop=0.05
+            [color_sub, pc_sub], queue_size=sync_queue_size, slop=sync_slop
         )
         self._sync.registerCallback(self._sync_callback)
+
+    def _declare(self, name, default, description, read_only=False):
+        """Declare a parameter and return its value."""
+        descriptor = ParameterDescriptor(description=description, read_only=read_only)
+        return self.declare_parameter(name, default, descriptor).value
+
+    def _validate_parameters(self, params) -> SetParametersResult:
+        """Reject out-of-range values before they reach the model."""
+        for p in params:
+            if p.name in ('conf_threshold', 'iou_threshold') and not 0.0 <= p.value <= 1.0:
+                return SetParametersResult(successful=False, reason=f'{p.name} must be in [0, 1]')
+            if p.name in ('max_detections', 'min_box_points', 'ransac.max_retry') and p.value < 1:
+                return SetParametersResult(successful=False, reason=f'{p.name} must be >= 1')
+            if p.name == 'classes' and len(p.value) == 0:
+                return SetParametersResult(successful=False, reason='classes must not be empty')
+        return SetParametersResult(successful=True)
+
+    def _apply_tuning(self) -> None:
+        """Copy the current tuning parameters onto the model and RANSAC settings."""
+        get = lambda name: self.get_parameter(name).value  # noqa: E731
+        self._model.conf = get('conf_threshold')
+        self._model.iou = get('iou_threshold')
+        self._model.max_det = get('max_detections')
+        self._model.classes = np.asarray(get('classes'))
+        self._min_box_points = get('min_box_points')
+        self._ransac_args = {
+            'max_retry': get('ransac.max_retry'),
+            'p_thresh': get('ransac.p_thresh'),
+            'r_thresh': get('ransac.r_thresh'),
+            'l_thresh': get('ransac.l_thresh'),
+        }
 
     def _camera_info_callback(self, msg: CameraInfo) -> None:
         if self._K is not None:
@@ -125,10 +180,10 @@ class YoloNode(Node):
         for box in boxes:
             mask = check_box(pixel_coords, box)
             box_xyz = xyz[mask]
-            if len(box_xyz) < 3:
+            if len(box_xyz) < self._min_box_points:
                 continue
             centroid = np.median(box_xyz, axis=0)
-            normal = ransac_plane_normal(box_xyz)
+            normal = ransac_plane_normal(box_xyz, **self._ransac_args)
             qx, qy, qz, qw = normal_to_quaternion(normal)
             # convert quaternion to yaw angle (gamma)
             gamma = 2.0 * np.arctan2(qz, qw)
