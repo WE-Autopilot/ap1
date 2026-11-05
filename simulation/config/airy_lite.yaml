@@ -17,7 +17,7 @@ name: RoboSense Airy Lite
 version: 1
 
 topics:
-  input: /carla/hero/lidar            # [est] assumed raw bag topic (see README)
+  input: /carla/hero/lidar            # raw bag topic, set by record_bag.py
   output: /sensing/lidar/pointcloud   # [ICD]
 # [ICD] Frames & Transforms page. The raw bag's /tf_static must use this same
 # name (see README), so change both together.
