@@ -15,10 +15,12 @@ setup(
             ['resource/' + package_name]),
         (os.path.join('share', package_name), ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*')),
+        # Model files (Git LFS); the node finds them with yolo_node.default_yolo_model
+        (os.path.join('share', package_name, 'models'), glob('models/*.onnx')),
     ],
     # include models inside package data
     package_data={
-        package_name: ['ufld/model.onnx', 'yolo/yolo11n.onnx', 'ufld/config.py'],
+        package_name: ['ufld/model.onnx', 'ufld/config.py'],
     },
     install_requires=['setuptools'],
     zip_safe=True,

@@ -78,6 +78,14 @@ CMD ["bash"]
 FROM module-source AS rosdep_scan
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 WORKDIR ${AP1_WS}
+# A Git LFS file that was never pulled is a small text pointer, not the real
+# file (e.g. a model). Fail here with the fix instead of at runtime.
+RUN pointers="$(grep -rlI '^version https://git-lfs.github.com/spec/v1' src || true)" && \
+    if [[ -n "$pointers" ]]; then \
+      echo "These files are Git LFS pointers, not the real files. Run 'git lfs pull' and rebuild:" >&2; \
+      echo "$pointers" >&2; \
+      exit 1; \
+    fi
 RUN rosdep update --rosdistro "${ROS_DISTRO}" > /dev/null && \
     rosdep keys --from-paths src --ignore-src | sort -u > /tmp/rosdep_keys && \
     xargs -r -a /tmp/rosdep_keys rosdep resolve --rosdistro "${ROS_DISTRO}" > /tmp/rosdep_resolved && \

@@ -28,9 +28,10 @@ YOLO node's `device` parameter picks the hardware.
 2. GPU machines only (Linux and WSL): NVIDIA driver 580 or newer (needed for CUDA 13) and the
    [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
    then `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`.
-3. The YOLO model is mounted straight from `src/perception/ap1_perception/yolo/yolo11n.onnx`,
-   which is in Git LFS. If that file is a small text pointer instead of ~10 MB,
-   run `git lfs pull`.
+3. [Git LFS](https://git-lfs.com), then `git lfs pull` in the repo. The YOLO
+   model (`src/perception/models/`) is stored in LFS and baked into the images;
+   a build fails with this hint if it's still an un-pulled pointer. Older
+   checkouts can delete any root `models/` folder: it's no longer used.
 4. Create a `.env` file in the repo root that tells `docker compose` which
    module files to chain together. Run this once from the repo root:
    ```bash
@@ -119,6 +120,9 @@ Try launching the YOLO node from the `ap1_perception` ROS package:
 ros2 launch ap1_perception yolo.launch.py
 ```
 
+The node loads the model installed with the package by default and logs its
+path at startup. Pass `model_path:=/path/to/model.onnx` to try another one.
+
 The deploy image runs the YOLO node on its own.
 In another terminal, try:
 
@@ -142,7 +146,7 @@ Smoke test (imports, cv_bridge, YOLO inference):
 
 ```bash
 docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception-cpu \
-    python3 /tests/perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
+    python3 /tests/perception_smoke.py --device cpu
 ```
 
 End-to-end test: with the YOLO node running (`docker compose up -d perception-cpu`),
@@ -225,7 +229,7 @@ Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
 
 ```
 .env                          yours, not tracked: points docker compose at modules/ (Setup step 4)
-.dockerignore                 keeps bags and build output out of images
+.dockerignore                 keeps bags, build output and the UFLD model out of images
 bags/                         recordings, mounted at /ws/bags (contents gitignored)
 modules/                      how modules run (CPU and GPU services per module)
   docker-compose.yaml         deploy services: mounts, networking, launch commands

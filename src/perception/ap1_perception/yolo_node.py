@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import numpy as np
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from rcl_interfaces.msg import ParameterDescriptor, SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
@@ -22,6 +25,15 @@ INFO_TOPIC = "camera/camera/aligned_depth_to_color/camera_info"
 
 #PUBLISH_TOPIC = "perception/entities"
 PUBLISH_TOPIC = "ap1/perception/entities"
+
+# The only place the YOLO model's file name appears. Model files live in
+# src/perception/models/ (Git LFS) and are installed to the package's share folder.
+YOLO_MODEL_FILE = "yolo11n.onnx"
+
+
+def default_yolo_model() -> str:
+    """Path to the YOLO model installed with the package: <ap1_perception share>/models."""
+    return str(Path(get_package_share_directory("ap1_perception")) / "models" / YOLO_MODEL_FILE)
 
 
 def normal_to_quaternion(normal: np.ndarray) -> tuple[float, float, float, float]:
@@ -75,8 +87,8 @@ class YoloNode(Node):
         self._K: np.ndarray | None = None
 
         # Startup-only parameters: changing these needs a node restart (not a rebuild).
-        # Empty model_path falls back to the model bundled in the package.
-        model_path = self._declare('model_path', '', 'YOLO .onnx model; empty uses the bundled model', True)
+        model_path = self._declare('model_path', default_yolo_model(),
+                                   'YOLO .onnx model; defaults to the one installed with the package', True)
         device = self._declare('device', 'auto', "'auto', 'cuda' or 'cpu'", True)
         sync_queue_size = self._declare('sync_queue_size', 5, 'Image/point cloud sync queue length', True)
         sync_slop = self._declare('sync_slop', 0.05, 'Max image/point cloud stamp gap (s)', True)
@@ -92,12 +104,12 @@ class YoloNode(Node):
         self._declare('ransac.r_thresh', 0.7, 'RANSAC inlier ratio to accept a plane')
         self._declare('ransac.l_thresh', 0.01, 'RANSAC inlier distance (m)')
 
-        self._model = YOLO(model_path=model_path or None, device=device)
+        self._model = YOLO(model_path=model_path, device=device)
         self._apply_tuning()
         self.add_on_set_parameters_callback(self._validate_parameters)
         self.add_post_set_parameters_callback(lambda _params: self._apply_tuning())
         self.get_logger().info(
-            f"YOLO loaded, running on {self._model.provider} "
+            f"YOLO loaded from {model_path}, running on {self._model.provider} "
             f"(conf={self._model.conf}, classes={self._model.classes.tolist()})."
         )
 

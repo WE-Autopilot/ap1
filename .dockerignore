@@ -7,8 +7,11 @@
 **/__pycache__
 **/*.egg-info
 
-# Models and bags are mounted at runtime, never baked into images
-**/*.onnx
+# The UFLD model (426 MB) needs torch, which the images don't have. Every other
+# model (src/perception/models/) is baked into the images.
+src/perception/ap1_perception/ufld/model.onnx
+
+# Bags are mounted at runtime
 bags
 *.bag
 *.db3
