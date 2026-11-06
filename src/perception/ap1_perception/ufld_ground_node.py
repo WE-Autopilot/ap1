@@ -1,8 +1,8 @@
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import CameraInfo, Image, PointCloud, PointCloud2, ChannelFloat32
-from geometry_msgs.msg import Point32, Point
+from sensor_msgs.msg import CameraInfo, Image, PointCloud2
+from geometry_msgs.msg import Point
 from shape_msgs.msg import Plane as PlaneMsg
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 from cv_bridge import CvBridge
@@ -89,41 +89,18 @@ class UfldGroundNode(Node):
         frame = self._bridge.imgmsg_to_cv2(color_msg, desired_encoding='rgb8')
         smooth_coords, lane_exists = self._model(frame)
 
-        # aly edit
-        # swapping PointCloud out for LaneBoundaries
-        # === START LANEBOUNDARIES
+        # --- Publish lane boundaries ---
         lane_boundaries_msg = self.create_lane_boundaries_message(
                 zip(smooth_coords, lane_exists), plane
         )
         if lane_boundaries_msg is not None:
             self._lane_pub.publish(lane_boundaries_msg)
         else:
-            print("Your lane boundaries are null twin")
-        return
-        # === END LANEBOUNDARIES
-        # this is the other Pointcloud code
+            self.get_logger().warn(
+                "Your lane boundaries are null twin: Ego-lane boundaries not detected; skipping LaneBoundaries publish.",
+                throttle_duration_sec=1.0,
+            )
 
-        #cloud = PointCloud()
-        #cloud.header = color_msg.header
-        #lane_id_channel = ChannelFloat32(name='lane_id', values=[])
-
-        #for lane_idx, (lane_coords, exists) in enumerate(zip(smooth_coords, lane_exists)):
-        #    if not exists:
-        #        continue
-
-        #    # lanes in pixel coords
-        #    lane_px = np.array(lane_coords, dtype=np.float64)
-        #    # lanes in 3d coords - post projection
-        #    pts_3d = ground_proj(self._K, lane_px, plane)
-
-        #    for pt in pts_3d:
-        #        cloud.points.append(Point32(
-        #            x=float(pt[0]), y=float(pt[1]), z=float(pt[2])
-        #        ))
-        #        lane_id_channel.values.append(float(lane_idx))
-
-        #cloud.channels.append(lane_id_channel)
-        #self._lane_pub.publish(cloud)
 
     def create_lane_boundaries_message(self, lanes, plane):
         lanes = list(lanes) # materialise the zip iterator

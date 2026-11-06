@@ -171,11 +171,16 @@ frames::RouteF handle_stopping(const frames::MapF& map)
 
     // Speed Profile
     float target_speed = 0.f;
-    float distance_to_stop = next_sign->x; // distance to sign ykwim kinda cooked if our coords aren't right but whatever
-    if (distance_to_stop < 0.1) target_speed = 0.f;
-    else if (distance_to_stop < 1) target_speed = std::min(route.speed_profile.at(0), 0.2f);
-    else if (distance_to_stop < 4) target_speed = std::min(route.speed_profile.at(0), 0.7f);
-    else target_speed = map.speed;
+    float distance_to_stop =
+        next_sign->x; // distance to sign ykwim kinda cooked if our coords aren't right but whatever
+    if (distance_to_stop < 0.1)
+        target_speed = 0.f;
+    else if (distance_to_stop < 1)
+        target_speed = std::min(route.speed_profile.at(0), 0.2f);
+    else if (distance_to_stop < 4)
+        target_speed = std::min(route.speed_profile.at(0), 0.7f);
+    else
+        target_speed = map.speed;
     route.speed_profile = {target_speed};
 
     return route;

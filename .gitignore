@@ -1,6 +1,3 @@
-# msgs to be deleted
-src/msgs
-
 # External Dependencies (Managed by ap1.repos)
 src/external/
 

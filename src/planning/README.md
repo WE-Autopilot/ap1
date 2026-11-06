@@ -6,14 +6,3 @@
 
 Build with: `colcon build`.
 
-## Usage
-
-Planning takes in map data and outputs two objects: 
-1. TargetPath. A list of waypoints relative to the car.
-2. SpeedProfile. A list of speeds that control should follow.
-
-These are then ingested by control.
-
-## Debugging
-
-See [here](https://www.notion.so/Debugging-C-With-GDB-2b86a4110fc680388d27d07f0c63fa4f?source=copy_link) for documentation.
