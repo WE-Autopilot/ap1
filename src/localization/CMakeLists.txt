@@ -17,6 +17,7 @@ find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(PCL REQUIRED)
 find_package(ap1_msgs REQUIRED)
+find_package(vision_msgs REQUIRED)
 
 add_executable(localization_node
   src/localization_node.cpp
@@ -44,7 +45,22 @@ ament_target_dependencies(localization_node
 
 target_link_libraries(localization_node ${PCL_LIBRARIES})
 
-install(TARGETS localization_node
+# Perception objects -> P&C (ICD #2 -> #10)
+add_executable(object_relay_node src/object_relay_node.cpp)
+ament_target_dependencies(object_relay_node
+  rclcpp
+  vision_msgs
+)
+
+# Fake perception publisher for testing object_relay_node by hand
+add_executable(fake_perception_objects test/fake_perception_objects.cpp)
+ament_target_dependencies(fake_perception_objects
+  rclcpp
+  vision_msgs
+  ap1_msgs
+)
+
+install(TARGETS localization_node object_relay_node fake_perception_objects
   DESTINATION lib/${PROJECT_NAME}
 )
 
