@@ -12,6 +12,7 @@ CARLA test drive ──record_bag.py──> raw bag ──filter_bag.py──> f
 | LiDAR | RoboSense Airy Lite | [config/airy_lite.yaml](config/airy_lite.yaml) |
 | IMU | MicroStrain 3DM-CV7-AHRS | [config/cv7_ahrs.yaml](config/cv7_ahrs.yaml) |
 | Mount positions | where both sit on the kart | [config/mounts.yaml](config/mounts.yaml) |
+| Recording settings | map, tick, speed, bag folder | [config/recording.yaml](config/recording.yaml) |
 
 **Contents:**
 [Quick start](#quick-start) ·
@@ -29,17 +30,19 @@ With CARLA running and ROS 2 sourced:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 simulation/record_bag.py --filter    # record, then filter -> *_raw and *_filtered
-ros2 bag play bags/<name>_filtered --clock   # play it into LIO-SAM
+python3 -m pip install -r simulation/requirements.txt --break-system-packages  # once
+python3 simulation/record_bag.py --filter            # record, then filter -> *_raw and *_filtered
+ros2 bag play ~/WEAP/bags/<name>_filtered --clock    # play it into LIO-SAM
 ```
 
-Bags live outside Git, in `bags/`. Names are
+Bags live outside Git, in `~/WEAP/bags/` (`bag_dir` in
+[config/recording.yaml](config/recording.yaml), or `--bag-dir`). Names are
 `<date>_<map>_<lidar>-v<N>_<imu>-v<N>[_short]_<raw|filtered>`, where each sensor
 is its config's file name (underscores dropped) and `N` is its `version`. The
 commands below use:
 
 ```bash
-BAG=bags/2026-10-29_town01_airylite-v1_cv7ahrs-v1
+BAG=~/WEAP/bags/2026-10-29_town01_airylite-v1_cv7ahrs-v1
 ```
 
 ## Recording a raw bag
@@ -50,19 +53,25 @@ python3 simulation/record_bag.py --short        # smallest closed loop through t
 python3 simulation/record_bag.py --filter       # also write the _filtered bag
 ```
 
+Driving and recording settings are in [config/recording.yaml](config/recording.yaml).
+Each has a flag that overrides it for one run, such as `--map Town02`:
+`--map`, `--spawn-point`, `--vehicle`, `--tick-s`, `--speed-kmh`, `--settle-s`,
+`--still-s`, `--lookahead-m`, `--max-off-route-m`, `--stuck-s`, `--sensor-timeout-s`,
+`--lidar-oversample`, `--lidar-range-m` and `--bag-dir`. Use `--config`
+to swap in a whole other settings file. Other flags:
+
 | Flag | Default | Meaning |
 |---|---|---|
 | `--short` | off | only the smallest closed loop through the spawn point (adds `_short` to the bag name) |
-| `--map` | `Town01` | CARLA map (Town01 is the v0.0 map) |
-| `--spawn-point` | `0` | index into the map's spawn points; the loop starts and ends here |
 | `--lidar`, `--imu` | the kart's | sensor configs, the same ones the filter uses |
 | `--mounts` | the kart's | [mount poses](config/mounts.yaml) |
 | `--host`, `--port` | `$CARLA_HOST` or `localhost`, `2000` | CARLA server; ports 2000 and 2001 must both be reachable |
-| `--out` | `bags/<name>_raw` | raw bag path (`--out` paths get no `_short` suffix) |
+| `--out` | `<bag_dir>/<name>_raw` | raw bag path (`--out` paths get no `_short` suffix) |
 | `--filter` | off | run `filter_bag.py` afterwards |
 
-- **Setup.** Install the `carla` Python package matching the server
-  (`pip install carla==0.9.16`); a mismatch can fail or misbehave.
+- **Setup.** Install the packages in [requirements.txt](requirements.txt). The
+  `carla` client must match the server's version; the recorder checks at startup
+  and tells you which version to install if they differ.
 - **CARLA on Windows, recorder in WSL.** By default WSL has its own network, so
   `localhost` doesn't reach Windows. To make it work, turn on mirrored networking
   (Windows 11 22H2 or later) by adding this to `C:\Users\<you>\.wslconfig`, then
@@ -86,8 +95,8 @@ python3 simulation/record_bag.py --filter       # also write the _filtered bag
 
 - **Route.** Plans a loop through every road (one direction each) that ends at
   the spawn point, so LIO-SAM's loop closure triggers. `--short` skips the
-  extra roads. The drive is the same every run, at 10 km/h.
-- **While recording.** The car stands still for 2 s at both ends (LIO-SAM's IMU
+  extra roads. The drive is the same every run, at `speed_kmh` (10 km/h).
+- **While recording.** The car stands still for `still_s` (2 s) at both ends (LIO-SAM's IMU
   init). The server window's camera follows from 40 m up. Progress is printed,
   and at the end the top speed.
 - **Stopping early.** Ctrl+C, getting stuck, or leaving the route keeps the bag
@@ -95,9 +104,17 @@ python3 simulation/record_bag.py --filter       # also write the _filtered bag
   the start.
 - **Speed.** The synchronous sim can run slower than real time (about a third
   over Tailscale), so allow for that. Playback is at real driving speed.
-- **Lidar rays.** It casts twice the rays the config's resolution needs. At
+- **Lidar rays.** It casts `lidar_oversample` (2) times the rays the config's resolution needs. At
   exactly the minimum the rays land on the filter's azimuth bin edges and some
   sweeps come out short.
+- **Code layout.** `record_bag.py` holds the command-line options and the tick
+  loop; driving, sensors and recording stay in that one loop, which keeps every
+  LiDAR slice in step with the IMU. The rest is reusable: `carla_frames.py`
+  (CARLA/ROS conversions, shared names and helpers), `sensor_config.py` (loads and
+  checks the configs both scripts use), `carla_sensors.py` (builds
+  sensors from configs and attaches them at mount poses), `route.py` (route planner
+  and follower, no CARLA needed) and `bag_writer.py`. Tests:
+  `python3 -m pytest simulation/tests`.
 
 ## Running the filter
 
