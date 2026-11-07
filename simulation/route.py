@@ -80,7 +80,8 @@ def plan_route(edges, start_edge, start_idx, short=False):
     A loop from point start_idx of start_edge back to the same point. Greedily
     drives to the nearest road not yet driven until all are covered, then heads
     home. With short, it adds no roads and just heads home.
-    Returns (points Nx2, roads covered, roads total).
+    Returns (points Nx2, roads covered, roads total). Raises ValueError if the
+    route can't get back to the start.
     """
     e0 = edges[start_edge]
     home = e0.u
@@ -108,7 +109,7 @@ def plan_route(edges, start_edge, start_idx, short=False):
 
     dist, via = dijkstra(edges, cur)
     if home not in dist:
-        raise SystemExit('the route can\'t get back to the start; try another --spawn-point')
+        raise ValueError('the route can\'t get back to the start; try another spawn point')
     drive(path_to(edges, via, cur, home))
     pieces.append(e0.pts[:start_idx + 1])
 
@@ -119,7 +120,7 @@ def plan_route(edges, start_edge, start_idx, short=False):
 
 
 def nearest_edge(edges, x, y, road_id, lane_id):
-    """(edge index, point index) on the lane closest to (x, y)."""
+    """(edge index, point index) on the lane closest to (x, y); ValueError if it has no edge."""
     best = (math.inf, None, None)
     for i, e in enumerate(edges):
         if e.junction or (e.road[0], e.lane) != (road_id, lane_id):
@@ -127,6 +128,9 @@ def nearest_edge(edges, x, y, road_id, lane_id):
         d = np.hypot(e.pts[:, 0] - x, e.pts[:, 1] - y)
         if d.min() < best[0]:
             best = (d.min(), i, int(d.argmin()))
+    if best[1] is None:
+        raise ValueError(f'road {road_id} lane {lane_id} at ({x:.1f}, {y:.1f}) is not on a plain '
+                         'road (it may be inside a junction); try another spawn point')
     return best[1], best[2]
 
 
@@ -142,7 +146,7 @@ class RouteFollower:
 
     KP, KI = 0.6, 0.15
     MAX_THROTTLE = 0.75
-    MAX_STEER_STEP = 0.03     # per tick
+    MAX_STEER_RATE = 3.0      # full-lock units per second
     ACCEL = 0.8               # m/s^2, how fast the speed target ramps up (~3.5 s to 10 km/h)
     STOP_DECEL = 1.0          # m/s^2, slowing for the end of the route
 
@@ -177,7 +181,8 @@ class RouteFollower:
         alpha = math.atan2(ly, lx)
         delta = math.atan2(2.0 * self.wheelbase * math.sin(alpha), max(math.hypot(lx, ly), 1.0))
         target = float(np.clip(math.degrees(delta) / self.max_steer, -1.0, 1.0))
-        self.steer += float(np.clip(target - self.steer, -self.MAX_STEER_STEP, self.MAX_STEER_STEP))
+        max_step = self.MAX_STEER_RATE * dt
+        self.steer += float(np.clip(target - self.steer, -max_step, max_step))
 
         if self.remaining < 1.0:
             return 0.0, self.steer, 1.0

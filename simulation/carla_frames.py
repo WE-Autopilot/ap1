@@ -94,6 +94,30 @@ def topic_metadata(name, type_name):
 
 # ---------- CARLA client helpers ----------
 
+def versions_match(client_version, server_version):
+    """Compare releases only: a source-built server reports e.g. 0.9.16-12-gabc123."""
+    return client_version.split('-')[0] == server_version.split('-')[0]
+
+
+def connect(host, port):
+    """A carla.Client for a server of the same version; exits with a clear message if not."""
+    import carla
+    client = carla.Client(host, port)
+    client.set_timeout(10.0)
+    try:
+        server = client.get_server_version()
+    except RuntimeError as e:
+        raise SystemExit(f'can\'t reach a CARLA server at {host}:{port} ({e}). Is it running? '
+                         'See "Recording a raw bag" in simulation/README.md') from None
+    local = client.get_client_version()
+    if not versions_match(local, server):
+        raise SystemExit(
+            f'CARLA client {local} doesn\'t match the server at {host}:{port}, which is {server}. '
+            f'Install the matching client: python3 -m pip install carla=={server.split("-")[0]} '
+            '--break-system-packages')
+    return client
+
+
 def open_world(client, map_name, tick_s):
     """
     The world on map_name in synchronous mode at tick_s. Returns (world, settings

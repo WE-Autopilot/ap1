@@ -54,6 +54,11 @@ def load_configs(lidar_path, imu_path, mounts_path, tick_s):
     if 1.0 / imu['rate_hz'] < tick_s - 1e-9:
         raise SystemExit(f'{imu_path}: rate_hz {imu["rate_hz"]} is faster than CARLA\'s '
                          f'{1 / tick_s:g} Hz ticks')
+    # filter_bag.py needs at least two slices per rotation to give points their time.
+    if tick_s > 0.5 / lidar['rotation_hz'] + 1e-9:
+        raise SystemExit(f'tick_s {tick_s:g} is too long for {lidar_path}: at rotation_hz '
+                         f'{lidar["rotation_hz"]:g} filter_bag.py needs ticks of at most '
+                         f'{0.5 / lidar["rotation_hz"]:g} s')
     return lidar, imu, mounts
 
 
