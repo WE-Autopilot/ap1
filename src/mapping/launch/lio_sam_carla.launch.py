@@ -11,7 +11,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -25,9 +25,11 @@ def generate_launch_description():
     rviz = LaunchConfiguration('rviz')
     sim_time = {'use_sim_time': True}
 
+    # on_exit=Shutdown(): if any LIO-SAM node dies, the whole launch exits, so
+    # scripts (bag replay, CI) see the launch end instead of a half-running pipeline.
     def lio_node(name):
         return Node(package='lio_sam', executable=f'lio_sam_{name}', name=f'lio_sam_{name}',
-                    parameters=[params_file], output='screen')
+                    parameters=[params_file], output='screen', on_exit=Shutdown())
 
     return LaunchDescription([
         DeclareLaunchArgument(
