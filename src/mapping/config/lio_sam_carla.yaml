@@ -38,18 +38,19 @@
     lidarMaxRange: 40.0           # [CHANGED] filter caps range at 40 m (central) / 30 m (outer)
 
     # IMU Settings
-    # First run uses the paper's values on purpose: they are far larger than the sim's true
-    # noise, so LIO-SAM leans on the LiDAR and is less likely to diverge. Tighten afterwards.
-    # Derived from cv7_ahrs.yaml (continuous-time, for the tuning pass):
-    #   imuAccNoise 1.47e-4  (150 ug per 100 Hz sample / sqrt(100))
-    #   imuGyrNoise 3.64e-5  (75 deg/h per sample / sqrt(100))
-    #   imuAccBiasN 8.48e-5  (Gauss-Markov sigma 19.3 ug * sqrt(2 / 10 s))
-    #   imuGyrBiasN 6.38e-7  (Gauss-Markov sigma 1.61 deg/h * sqrt(2 / 300 s))
-    imuAccNoise: 3.9939570888238808e-03
-    imuGyrNoise: 1.5636343949698187e-03
-    imuAccBiasN: 6.4356659353532566e-05
-    imuGyrBiasN: 3.5640318696367613e-05
-
+    # [CHANGED] From cv7_ahrs.yaml, converted to continuous-time noise densities
+    # (what GTSAM's preintegration expects):
+    #   imuAccNoise  150 ug per 100 Hz sample / sqrt(100)
+    #   imuGyrNoise  75 deg/h per 100 Hz sample / sqrt(100)
+    #   imuAccBiasN  Gauss-Markov sigma 19.3 ug * sqrt(2 / 10 s)
+    #   imuGyrBiasN  Gauss-Markov sigma 1.61 deg/h * sqrt(2 / 300 s)
+    # Paper values (fallback, gave a clean Town01 map):
+    #   imuAccNoise 3.99e-3, imuGyrNoise 1.56e-3, imuAccBiasN 6.44e-5, imuGyrBiasN 3.56e-5
+    imuAccNoise: 1.47e-4
+    imuGyrNoise: 3.64e-5
+    imuAccBiasN: 8.48e-5
+    imuGyrBiasN: 6.38e-7
+    
     imuGravity: 9.81              # [CHANGED] CARLA's g
     imuRPYWeight: 0.01
 
