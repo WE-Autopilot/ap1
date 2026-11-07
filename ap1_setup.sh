@@ -160,6 +160,11 @@ if [[ -f "$LIO_SAM_CMAKE" ]]; then
     if ! grep -q "<depend>cv_bridge</depend>" "$LIO_SAM_XML"; then
         sed -i 's|^\( *\)<build_depend>gtsam</build_depend>|&\n\1<depend>cv_bridge</depend>|' "$LIO_SAM_XML"
     fi
+    # LIO-SAM hardcodes its own odom -> "lidar_link" TF in mapOptmization.cpp
+    # (sic). That steals our lidar_link from the static base_link -> lidar_link
+    # mount, so give LIO-SAM's frame its own name. Idempotent.
+    LIO_SAM_MAPOPT="$WS_ROOT/src/external/LIO-SAM/src/mapOptmization.cpp"
+    sed -i 's/child_frame_id = "lidar_link";/child_frame_id = "lio_sam_lidar";/' "$LIO_SAM_MAPOPT"
 else
     err "LIO-SAM not found at src/external/LIO-SAM (vcs import failed?)"
     ERRORS=$((ERRORS+1))
