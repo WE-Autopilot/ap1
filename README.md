@@ -12,7 +12,7 @@ This is WE Autopilot's master workspace for development of the self-driving car 
 ```text
 ap1_setup.sh       Native setup script (see SETUP.md)
 ap1.repos          External repos imported with vcs (src/msgs, src/external/)
-docker/            Dockerfiles, bake file, and container tests
+docker/            Dockerfiles, bake file, and their configs
 modules/           Docker Compose files: how module containers run
 scripts/           Smoke tests and utilities (see scripts/README.md)
 src/

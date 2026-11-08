@@ -89,7 +89,7 @@ Docker Desktop runs containers in a Linux VM, on both Intel and Apple Silicon
 - Keep the repo under your home folder. Docker Desktop shares `/Users` with
   containers by default.
 - Host networking means the VM's network, not your Mac's. Containers reach each
-  other fine (dev container, smoke and end-to-end tests), but ROS discovery doesn't reach
+  other fine (dev containers, tests), but ROS discovery doesn't reach
   other machines, so `SUBNET` won't find the car or teammates. Use a Linux
   machine for that.
 
@@ -141,26 +141,39 @@ image. If an image isn't built locally, compose pulls it from the registry.
 
 ### Tests
 
-Both tests run in a second container from the deploy image, with
-`docker/tests` mounted in.
+Tests live in each package's `test/` folder and run with `colcon test`.
+`test/deploy/` holds the subset that also ships in the deploy image, to check
+the exact image that runs on the car:
 
-Smoke test (imports, cv_bridge, YOLO inference):
+- `test_perception_environment.py`: dependencies import and work together
+  (cv_bridge with apt's numpy, CUDA onnxruntime on GPU images), YOLO inference.
+- `test_yolo_node.py`: launches `yolo_node`, feeds it a stop-sign photo with
+  camera info and a point cloud over ROS, and checks the published entity. The
+  photo is downloaded to a temporary folder and deleted once loaded, so this
+  test needs internet.
+
+The other tests in `test/` are unit tests that only run in dev containers.
+
+The tests launch their own nodes in a ROS domain no other test run uses, so
+they never talk to running containers or to a teammate's nodes. They run on
+the GPU when the image is a GPU image and a GPU is visible, and on CPU otherwise.
+
+In a dev container, from `/ws` after `colcon build`:
 
 ```bash
-docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception-cpu \
-    python3 /tests/perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
+colcon test --packages-select ap1_perception
+colcon test-result --verbose
 ```
 
-End-to-end test: with the YOLO node running (`docker compose up -d perception-cpu`),
-it feeds the node a stop-sign photo (downloaded to a temp folder and deleted
-afterwards) with camera info and a point cloud over ROS, and checks the
-published entity. Run it with the same variant as the running node.
+Against a deploy image, through the deploy service so the model is mounted:
 
 ```bash
-docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception-cpu \
-    python3 /tests/perception_e2e.py
-docker compose logs perception-cpu    # what the node logged during the test
+docker compose run --rm perception-cpu pytest /opt/ap1/share/ap1_perception/test/deploy
 ```
+
+Use `docker compose run`, not `exec`: `exec` skips the image's entrypoint, so ROS
+isn't sourced. The same commands work in the all-modules containers
+(`all-dev-cpu` and `all-dev-gpu`, `all-perception`).
 
 ### GPU
 
@@ -175,8 +188,7 @@ docker compose exec perception-dev-gpu bash
 
 The GPU image sets `AP1_GPU=1`, which makes `yolo.launch.py` default to
 `device:=cuda` (failing at startup if the GPU isn't usable, rather than silently
-running on CPU). `device:=auto` uses the GPU when available. The smoke test
-takes `--device cuda` the same way.
+running on CPU). `device:=auto` uses the GPU when available.
 
 ### Control
 
@@ -295,7 +307,7 @@ If a dependency differs between CPU and GPU, use a condition on `AP1_GPU`, like
 the onnxruntime entries in `package.xml`.
 
 Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
-(1.26). The constraints file blocks upgrades, and the smoke test checks it.
+(1.26). The constraints file blocks upgrades, and the deploy tests check it.
 
 ## Layout
 
@@ -314,8 +326,6 @@ docker/                       how images are built
   all.Dockerfile              merges every module's sources for the all-modules images
   docker-bake.hcl             build graph: variants x targets (used locally and by CI)
   config/                     entrypoint, shell env, pip version pins, pyproject mask
-  tests/perception_smoke.py   smoke test, run locally and by CI
-  tests/perception_e2e.py     end-to-end ROS test
 ```
 
 ## How the build works
@@ -381,8 +391,8 @@ include a module in the all-modules images, also add a `COPY` line in
 ## CI
 
 `.github/workflows/perception-images.yml` builds both variants on every PR
-that touches `docker/`, `src/perception/` or `src/msgs/`, and runs the smoke
-test in each.
+that touches `docker/`, `src/perception/` or `src/msgs/`, and runs the deploy
+tests in each.
 On `main` it pushes `ghcr.io/we-autopilot/ap1/perception:{cpu,gpu}` plus a
 per-commit tag. The runners have no GPU, so the GPU image's inference runs on
 CPU there. CI only checks that its onnxruntime has CUDA support.
