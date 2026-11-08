@@ -61,6 +61,43 @@ services:
       - control-log:/ws/log
     command: sleep infinity
 
+  #################### ALL MODULES ####################
+  # One container with every module's source. Extends perception's service for
+  # the ROS settings and the model and bags mounts.
+  all-dev-cpu:
+    extends:
+      file: docker-compose.yaml
+      service: perception-cpu
+    profiles: !override [all-dev-cpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/all:cpu-dev
+    restart: "no"
+    volumes:
+      - ../src/msgs:/ws/src/msgs
+      - ../src/perception:/ws/src/perception
+      - ../src/control:/ws/src/control
+      - ../docker/config/pyproject-mask.toml:/ws/src/perception/pyproject.toml:ro
+      - all-build-cpu:/ws/build
+      - all-install-cpu:/ws/install
+      - all-log-cpu:/ws/log
+    command: sleep infinity
+
+  all-dev-gpu:
+    extends:
+      file: docker-compose.yaml
+      service: perception-gpu
+    profiles: !override [all-dev-gpu]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/all:gpu-dev
+    restart: "no"
+    volumes:
+      - ../src/msgs:/ws/src/msgs
+      - ../src/perception:/ws/src/perception
+      - ../src/control:/ws/src/control
+      - ../docker/config/pyproject-mask.toml:/ws/src/perception/pyproject.toml:ro
+      - all-build-gpu:/ws/build
+      - all-install-gpu:/ws/install
+      - all-log-gpu:/ws/log
+    command: sleep infinity
+
 # One set per variant: a build tree compiled against the CPU image must not be
 # reused in the GPU one, and the other way round
 volumes:
@@ -73,3 +110,9 @@ volumes:
   control-build:
   control-install:
   control-log:
+  all-build-cpu:
+  all-install-cpu:
+  all-log-cpu:
+  all-build-gpu:
+  all-install-gpu:
+  all-log-gpu:

@@ -61,3 +61,21 @@ services:
     command: >
       ros2 run ap1_control control_node
       /opt/ap1/share/ap1_control/config/control_node_cfg.csv
+
+  #################### ALL MODULES ####################
+  # Every module from one image (all-deploy in docker-bake.hcl), one container
+  # per module, so each restarts and logs on its own while sharing one build of
+  # ap1_msgs. GPU only, like the car. Start with `docker compose --profile all-deploy up -d`.
+  # Don't run alongside the per-module services above, or every node runs twice.
+  # extends merges profiles, so !override keeps these out of the module profiles.
+  all-perception:
+    extends:
+      service: perception-gpu
+    profiles: !override [all-deploy]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/all:gpu${AP1_TAG_SUFFIX:-}
+
+  all-control:
+    extends:
+      service: control
+    profiles: !override [all-deploy]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/all:gpu${AP1_TAG_SUFFIX:-}
