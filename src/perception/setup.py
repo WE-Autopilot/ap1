@@ -15,6 +15,9 @@ setup(
             ['resource/' + package_name]),
         (os.path.join('share', package_name), ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*')),
+        # Deploy tests ship with the package: pytest <prefix>/share/ap1_perception/test/deploy
+        (os.path.join('share', package_name, 'test', 'deploy'),
+            glob('test/deploy/*.py') + ['test/deploy/pytest.ini']),
     ],
     # include models inside package data
     package_data={
