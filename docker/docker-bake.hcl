@@ -51,8 +51,8 @@ group "default" {
   targets = ["perception-cpu"]
 }
 
-# builds every deploy image in a single command, for testing
-group "all" {
+// Every per-module deploy image in one command, to check each module builds on its own
+group "modules" {
   targets = ["perception-cpu", "control"]
 }
 
