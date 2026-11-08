@@ -46,3 +46,18 @@ Current blocker: `realsense2_camera` can fail on IMU-only bags with
 `No known base_stream found for transformations`, so use `pyrealsense2`
 directly until AP1 has a dedicated IMU bag publisher or IMU-to-odometry fusion
 node.
+
+## Bag Replay and Map Save script 
+
+`run_lio_sam.py` uses args to run either a) paper bag or b) carla bag
+using lio_sam and saves pcd map files, a log file, and .tum
+trajectory files to the specified output directory.
+
+Example use:
+```bash
+python3 scripts/run_lio_sam.py \
+    --bag <path>/paper_dataset \
+    --params <path>/config/params.yaml \
+    --rate 0.5 \
+    --output <path>/results \
+```
