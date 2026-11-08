@@ -214,6 +214,38 @@ docker compose logs -f control
 It logs `Velocity is null or nan. Skipping update.` every 2 seconds until
 something publishes `/ap1/actuation/speed`. That's expected.
 
+### All modules
+
+The `all` images hold every Docker module (perception and control for now) in
+one image, built from the same commit with one shared `ap1_msgs`.
+
+For development, `all-dev-cpu` and `all-dev-gpu` are single containers with the
+sources of `src/msgs`, `src/perception` and `src/control` mounted at `/ws/src`.
+Build and run everything from one shell:
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load all-dev-cpu
+docker compose up -d all-dev-cpu
+docker compose exec all-dev-cpu bash
+```
+
+Inside, `colcon build` from `/ws` builds all three packages, then any `ros2`
+command works as in the module dev containers.
+
+For deployment, `all-deploy` is a GPU image (`ap1/all:gpu`), like the car. The
+`all-deploy` profile runs one container per module from it, `all-perception` and
+`all-control`, with the same commands and mounts as the module services. Each
+restarts and logs on its own:
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load all-deploy
+docker compose --profile all-deploy up -d
+docker compose logs -f all-perception
+```
+
+Don't run the `all-deploy` profile alongside the module deploy services
+(`perception-gpu`, `control`): every node would run twice.
+
 ### Settings
 
 Compose reads these from your shell or from your `.env` file. Bake reads only
@@ -279,6 +311,7 @@ docker/                       how images are built
                               rosdep scan -> install -> build -> deploy/develop
   perception.Dockerfile       perception's sources and extra dependencies
   control.Dockerfile          control's sources and extra dependencies
+  all.Dockerfile              merges every module's sources for the all-modules images
   docker-bake.hcl             build graph: variants x targets (used locally and by CI)
   config/                     entrypoint, shell env, pip version pins, pyproject mask
   tests/perception_smoke.py   smoke test, run locally and by CI
@@ -314,7 +347,8 @@ stage, after the install.
 Dev build output lives in named volumes, one set per variant
 (`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
 so CPU and GPU dev containers never reuse a build compiled against the other
-image. Control has one set (`ap1_control-build` and so on).
+image. Control has one set (`ap1_control-build` and so on), and the all-modules
+dev containers one per variant (`ap1_all-build-cpu`, ...).
 `docker compose --profile '*' down` keeps them; delete them with
 `docker volume rm` to start clean.
 
@@ -325,8 +359,24 @@ BuildKit only builds the stages a target needs, so building `base-<variant>`
 (target `base`) never touches the module stages, and the module targets
 (`deploy`, `develop`) start from the module contexts instead of `base`.
 
+The all-modules images go through the same pipeline, with the module stages
+combined first:
+
+- `all-source-<variant>` (`all.Dockerfile`) copies every module's `source`
+  stage into one tree, so `rosdep_scan` and `build` see all packages.
+- `all-deps-<variant>` stacks the modules' `dependencies` stages: each module's
+  stage is built with the previous module's as its `base`. They can't be merged
+  with `COPY` like sources, since a `dependencies` stage can install packages.
+
+Both are built per variant, so `rosdep_scan` resolves the `AP1_GPU` conditions in
+`package.xml` for the right image.
+
 New modules add a `<module>.Dockerfile`, targets in `docker-bake.hcl`, and a
-service in each `modules/` compose file. They reuse `base.Dockerfile` as is.
+service in each `modules/` compose file. They reuse `base.Dockerfile` as is. To
+include a module in the all-modules images, also add a `COPY` line in
+`all.Dockerfile`, its `source` target to `all-source`'s contexts, a step to the
+`all-deps` stack, an `all-<module>` deploy service, and its source mount in the
+`all-dev-*` services.
 
 ## CI
 
