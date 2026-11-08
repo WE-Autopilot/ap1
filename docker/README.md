@@ -2,9 +2,9 @@
 
 Containerized build and dev environment for AP1 modules, modelled on
 [WATonomous' wato_monorepo](https://github.com/WATonomous/wato_monorepo).
-Perception is the first module on it. Other modules still use `ap1_setup.sh`.
+Perception and control run on it. Other modules still use `ap1_setup.sh`.
 
-Every image comes in two variants built from the same files:
+Perception images come in two variants built from the same files:
 
 | Variant | Base image | onnxruntime | For |
 |---|---|---|---|
@@ -12,7 +12,8 @@ Every image comes in two variants built from the same files:
 | `gpu` | `nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04` | `onnxruntime-gpu` | NVIDIA GPU machines (image ~8.3 GB) |
 
 The code is identical in both. Only the installed packages differ, and the
-YOLO node's `device` parameter picks the hardware.
+YOLO node's `device` parameter picks the hardware. Control has no GPU code, so
+it only has a CPU image (see [Control](#control)).
 
 ## Setup
 
@@ -31,16 +32,16 @@ YOLO node's `device` parameter picks the hardware.
 3. The YOLO model is mounted straight from `src/perception/ap1_perception/yolo/yolo11n.onnx`,
    which is in Git LFS. If that file is a small text pointer instead of ~10 MB,
    run `git lfs pull`.
-4. Create a `.env` file in the repo root that tells `docker compose` which
-   module files to chain together. Run this once from the repo root:
+4. Create a `.env` file in the repo root (it's gitignored) with this content:
    ```bash
-   echo 'COMPOSE_FILE=modules/docker-compose.yaml:modules/docker-compose.dev.yaml' > .env
+   # Required: the compose files, so commands need no -f flags
+   COMPOSE_FILE=modules/docker-compose.yaml:modules/docker-compose.dev.yaml
+
+   # Optional, see Settings
+   # ROS_DOMAIN_ID=0
+   # ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
    ```
-   The same file covers CPU and GPU: both sets of services are in those two
-   files, and you pick one by service name (`perception-cpu` or `perception-gpu`,
-   see [GPU](#gpu)). Compose only reads `.env` from the directory you run it in,
-   so always run `docker compose` from the repo root. The file is gitignored, so
-   you can also put your own [settings](#settings) in it.
+   Run `docker compose` from the repo root, since that's the only place it reads `.env` from.
 
 ### Windows (WSL 2)
 
@@ -106,12 +107,17 @@ docker compose exec perception-dev-cpu bash
 
 Inside the container, `src/msgs` and `src/perception` from your checkout are
 mounted at `/ws/src`, so edits on the host show up immediately. The dev image
-has no prebuilt copy of them: build both in the container:
+has no prebuilt copy of them: build both in the container, from `/ws`:
 
 ```bash
+cd /ws
 colcon build --symlink-install     # builds into /ws/install (kept across restarts)
 source install/setup.bash
 ```
+
+Always run `colcon build` from `/ws`. Run from a package folder like
+`/ws/src/perception`, it writes `build/`, `install/` and `log/` into your
+checkout on the host, and later builds from `/ws` then find the package twice.
 
 Try launching the YOLO node from the `ap1_perception` ROS package:
 
@@ -172,6 +178,42 @@ The GPU image sets `AP1_GPU=1`, which makes `yolo.launch.py` default to
 running on CPU). `device:=auto` uses the GPU when available. The smoke test
 takes `--device cuda` the same way.
 
+### Control
+
+Control is CPU only, so its targets and services have no `-cpu`/`-gpu` suffix:
+`control` (deploy) and `control-dev`. The dev container mounts `src/msgs` and
+`src/control`:
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load control-dev
+docker compose up -d control-dev
+docker compose exec control-dev bash
+```
+
+Inside, build from `/ws` and run the node. `ros2 run` takes the package name
+(`ap1_control`) and the executable name (`control_node`), then the path to the
+config CSV:
+
+```bash
+cd /ws
+colcon build --symlink-install
+source install/setup.bash
+ros2 run ap1_control control_node /ws/src/control/config/control_node_cfg.csv
+```
+
+The deploy service runs the node with the CSV installed in the image
+(`/opt/ap1/share/ap1_control/config/control_node_cfg.csv`), so rebuild the
+`control` image after changing the config:
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load control
+docker compose up -d control
+docker compose logs -f control
+```
+
+It logs `Velocity is null or nan. Skipping update.` every 2 seconds until
+something publishes `/ap1/actuation/speed`. That's expected.
+
 ### Settings
 
 Compose reads these from your shell or from your `.env` file. Bake reads only
@@ -182,6 +224,7 @@ from your shell, so set `AP1_REGISTRY` there if you change it. All are optional:
 | `AP1_REGISTRY` | `ghcr.io/we-autopilot/ap1` | image name prefix |
 | `AP1_TAG_SUFFIX` | empty | appended to the deploy image tag, e.g. `-<git sha>` to run an exact CI-built image |
 | `ROS_AUTOMATIC_DISCOVERY_RANGE` | `LOCALHOST` | how far ROS discovery reaches |
+| `ROS_DOMAIN_ID` | `0` | ROS domain. Must match any native nodes you talk to |
 
 ### Networking and users
 
@@ -207,13 +250,13 @@ shared-memory files once with
 
 ## Adding a dependency
 
-1. Declare it in `src/perception/package.xml` with its
+1. Declare it in the module's `package.xml` (e.g. `src/perception/package.xml`) with its
    [rosdep key](https://github.com/ros/rosdistro/tree/master/rosdep). Prefer apt
    keys (`python3-...`). Keys ending in `-pip` install from PyPI.
 2. Pin any pip package in `config/pip-constraints.txt`. rosdep can't pin
    versions, so this file is what keeps builds reproducible.
 3. Something rosdep can't express at all goes in the `dependencies` stage of
-   `perception.Dockerfile`. This is a last resort.
+   `<module>.Dockerfile`. This is a last resort.
 
 If a dependency differs between CPU and GPU, use a condition on `AP1_GPU`, like
 the onnxruntime entries in `package.xml`.
@@ -227,13 +270,14 @@ Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
 .env                          yours, not tracked: points docker compose at modules/ (Setup step 4)
 .dockerignore                 keeps bags and build output out of images
 bags/                         recordings, mounted at /ws/bags (contents gitignored)
-modules/                      how modules run (CPU and GPU services per module)
+modules/                      how modules run (CPU and GPU services per module, CPU only for control)
   docker-compose.yaml         deploy services: mounts, networking, launch commands
   docker-compose.dev.yaml     dev services: extend deploy, mount source, idle
 docker/                       how images are built
   base.Dockerfile             ROS Jazzy base, plus the shared pipeline:
                               rosdep scan -> install -> build -> deploy/develop
   perception.Dockerfile       perception's sources and extra dependencies
+  control.Dockerfile          control's sources and extra dependencies
   docker-bake.hcl             build graph: variants x targets (used locally and by CI)
   config/                     entrypoint, shell env, pip version pins, pyproject mask
   tests/perception_smoke.py   smoke test, run locally and by CI
@@ -262,7 +306,8 @@ docker/                       how images are built
 Dev build output lives in named volumes, one set per variant
 (`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
 so CPU and GPU dev containers never reuse a build compiled against the other
-image. `docker compose --profile '*' down` keeps them; delete them with
+image. Control has one set (`ap1_control-build` and so on).
+`docker compose --profile '*' down` keeps them; delete them with
 `docker volume rm` to start clean.
 
 Deploy containers restart after a crash or reboot until stopped with
@@ -283,6 +328,7 @@ test in each.
 On `main` it pushes `ghcr.io/we-autopilot/ap1/perception:{cpu,gpu}` plus a
 per-commit tag. The runners have no GPU, so the GPU image's inference runs on
 CPU there. CI only checks that its onnxruntime has CUDA support.
+Control images aren't built in CI yet.
 
 ## Not covered yet
 

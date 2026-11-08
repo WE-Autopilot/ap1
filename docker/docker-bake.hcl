@@ -51,6 +51,11 @@ group "default" {
   targets = ["perception-cpu"]
 }
 
+# builds every deploy image in a single command, for testing
+group "all" {
+  targets = ["perception-cpu", "control"]
+}
+
 ############################ base ############################
 
 # Each target defines a docker build invocation
@@ -125,4 +130,54 @@ target "perception-dev" {
     "module-deps"   = "target:perception-deps-${v.name}"
   }
   tags = ["${AP1_REGISTRY}/perception:${v.name}-dev"]
+}
+
+######################### control #########################
+// CPU only: control has no GPU dependencies, so no matrix
+
+target "control-source" {
+  context    = "."
+  dockerfile = "docker/control.Dockerfile"
+  target     = "source"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from("control-source")
+  cache-to   = cache_to("control-source")
+}
+
+target "control-deps" {
+  context    = "."
+  dockerfile = "docker/control.Dockerfile"
+  target     = "dependencies"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from("control-deps")
+  cache-to   = cache_to("control-deps")
+}
+
+// Deploy image: what runs on the car / in integration tests
+target "control" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "deploy"
+  contexts = {
+    "module-source" = "target:control-source"
+    "module-deps"   = "target:control-deps"
+  }
+  tags = compact([
+    "${AP1_REGISTRY}/control:cpu",
+    notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/control:cpu-${GIT_SHA}" : "",
+  ])
+  cache-from = cache_from("control")
+  cache-to   = cache_to("control")
+}
+
+// Dev image: dependencies + dev tools; source is mounted and built at runtime
+target "control-dev" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "develop"
+  contexts = {
+    "module-source" = "target:control-source"
+    "module-deps"   = "target:control-deps"
+  }
+  tags = ["${AP1_REGISTRY}/control:cpu-dev"]
 }

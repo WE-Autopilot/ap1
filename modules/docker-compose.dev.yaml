@@ -41,6 +41,22 @@ services:
       - perception-log-gpu:/ws/log
     command: sleep infinity
 
+  #################### CONTROL ####################
+  control-dev:
+    extends:
+      file: docker-compose.yaml
+      service: control
+    profiles: [control-dev]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/control:cpu-dev
+    restart: "no"
+    volumes:
+      - ../src/msgs:/ws/src/msgs
+      - ../src/control:/ws/src/control
+      - control-build:/ws/build
+      - control-install:/ws/install
+      - control-log:/ws/log
+    command: sleep infinity
+
 # One set per variant: a build tree compiled against the CPU image must not be
 # reused in the GPU one, and the other way round
 volumes:
@@ -50,3 +66,6 @@ volumes:
   perception-build-gpu:
   perception-install-gpu:
   perception-log-gpu:
+  control-build:
+  control-install:
+  control-log:

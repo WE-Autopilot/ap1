@@ -48,4 +48,16 @@ services:
     profiles: [perception-gpu]
     image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:gpu${AP1_TAG_SUFFIX:-}
     gpus: all
-  # TODO: Add other modules if/when they employ docker e.g. planning, control, mapping, localization
+
+  #################### CONTROL ####################
+  # only one base control service, no variants as they do not require GPUs
+  control: &control
+    <<: *ros
+    profiles: [control]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/control:cpu${AP1_TAG_SUFFIX:-}
+    restart: unless-stopped
+    # control_node takes the config CSV path as its first argument (not a ROS params file).
+    # The CSV is installed into the image by CMake
+    command: >
+      ros2 run ap1_control control_node
+      /opt/ap1/share/ap1_control/config/control_node_cfg.csv
