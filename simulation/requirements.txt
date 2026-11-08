@@ -1,0 +1,8 @@
+# Python packages for record_bag.py and filter_bag.py, on top of ROS 2 Jazzy:
+#   python3 -m pip install -r simulation/requirements.txt --break-system-packages
+#
+# The CARLA client must match the server's version; record_bag.py stops at
+# startup if it doesn't. Change this pin when the team moves to a new server.
+carla==0.9.16
+numpy
+PyYAML

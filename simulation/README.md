@@ -3,58 +3,150 @@
 Turns a raw CARLA test-drive bag into one that looks like it came from the golf
 kart's sensors, so maps and LIO-SAM / NDT params carry over between sim and real.
 
+```
+CARLA test drive ──record_bag.py──> raw bag ──filter_bag.py──> filtered bag ──> LIO-SAM / NDT
+```
+
 | Sensor | Real hardware | Config |
 |---|---|---|
 | LiDAR | RoboSense Airy Lite | [config/airy_lite.yaml](config/airy_lite.yaml) |
 | IMU | MicroStrain 3DM-CV7-AHRS | [config/cv7_ahrs.yaml](config/cv7_ahrs.yaml) |
 | Mount positions | where both sit on the kart | [config/mounts.yaml](config/mounts.yaml) |
+| Recording settings | map, tick, speed, bag folder | [config/recording.yaml](config/recording.yaml) |
 
-```
-CARLA test drive ──ros2 bag record──> raw bag ──filter_bag.py──> filtered bag ──> LIO-SAM / NDT
-```
+**Contents:**
+[Quick start](#quick-start) ·
+[Recording a raw bag](#recording-a-raw-bag) ·
+[Running the filter](#running-the-filter) ·
+[What the raw bag must contain](#what-the-raw-bag-must-contain) ·
+[Mount positions](#mount-positions) ·
+[What the filter does](#what-the-filter-does) ·
+[Adding a sensor](#adding-a-sensor) ·
+[Specs and sources](#specs-and-sources)
 
-## Bag names
+## Quick start
 
-Bags live outside Git and are named `<date>_<map>_<lidar config>-v<N>_<imu
-config>-v<N>_<raw|filtered>`, with `N` from each config's `version`, e.g.
-`2026-10-29_town01_airylite-v1_cv7-v1_raw`. The commands below use:
+With CARLA running and ROS 2 sourced:
 
 ```bash
-BAG=bags/2026-10-29_town01_airylite-v1_cv7-v1
+source /opt/ros/jazzy/setup.bash
+python3 -m pip install -r simulation/requirements.txt --break-system-packages  # once
+python3 simulation/record_bag.py --filter            # record, then filter -> *_raw and *_filtered
+ros2 bag play ~/WEAP/bags/<name>_filtered --clock    # play it into LIO-SAM
 ```
+
+Bags live outside Git, in `~/WEAP/bags/` (`bag_dir` in
+[config/recording.yaml](config/recording.yaml), or `--bag-dir`). Names are
+`<date>_<map>_<lidar>-v<N>_<imu>-v<N>[_short]_<raw|filtered>`, where each sensor
+is its config's file name (underscores dropped) and `N` is its `version`. The
+commands below use:
+
+```bash
+BAG=~/WEAP/bags/2026-10-29_town01_airylite-v1_cv7ahrs-v1
+```
+
+## Recording a raw bag
+
+```bash
+python3 simulation/record_bag.py                # drive every road of Town01
+python3 simulation/record_bag.py --short        # smallest closed loop through the spawn point
+python3 simulation/record_bag.py --filter       # also write the _filtered bag
+```
+
+Driving and recording settings are in [config/recording.yaml](config/recording.yaml).
+Each has a flag that overrides it for one run, such as `--map Town02`:
+`--map`, `--spawn-point`, `--vehicle`, `--tick-s`, `--speed-kmh`, `--settle-s`,
+`--still-s`, `--lookahead-m`, `--max-off-route-m`, `--stuck-s`, `--sensor-timeout-s`,
+`--lidar-oversample`, `--lidar-range-m` and `--bag-dir`. Use `--config`
+to swap in a whole other settings file. Other flags:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--short` | off | only the smallest closed loop through the spawn point (adds `_short` to the bag name) |
+| `--lidar`, `--imu` | the kart's | sensor configs, the same ones the filter uses |
+| `--mounts` | the kart's | [mount poses](config/mounts.yaml) |
+| `--host`, `--port` | `$CARLA_HOST` or `localhost`, `2000` | CARLA server; ports 2000 and 2001 must both be reachable |
+| `--out` | `<bag_dir>/<name>_raw` | raw bag path (`--out` paths get no `_short` suffix) |
+| `--filter` | off | run `filter_bag.py` afterwards |
+
+- **Setup.** Install the packages in [requirements.txt](requirements.txt). The
+  `carla` client must match the server's version; the recorder checks at startup
+  and tells you which version to install if they differ.
+- **CARLA on Windows, recorder in WSL.** By default WSL has its own network, so
+  `localhost` doesn't reach Windows. To make it work, turn on mirrored networking
+  (Windows 11 22H2 or later) by adding this to `C:\Users\<you>\.wslconfig`, then
+  run `wsl --shutdown` from Windows and reopen WSL:
+
+  ```ini
+  [wsl2]
+  networkingMode=mirrored
+  ```
+
+- **Passing the IP instead.** Without mirrored networking, or with CARLA on
+  another machine, give the server's IP with `--host` (or set `$CARLA_HOST`):
+
+  ```bash
+  # CARLA on this PC's Windows, recorder in WSL. The IP can change when WSL restarts.
+  python3 simulation/record_bag.py --host "$(ip route show default | awk '{print $3}')"
+
+  # CARLA over Tailscale. Run `tailscale ip -4` on the CARLA machine to get its IP.
+  python3 simulation/record_bag.py --host <tailscale-ip>
+  ```
+
+- **Route.** Plans a loop through every road (one direction each) that ends at
+  the spawn point, so LIO-SAM's loop closure triggers. `--short` skips the
+  extra roads. The drive is the same every run, at `speed_kmh` (10 km/h).
+- **While recording.** The car stands still for `still_s` (2 s) at both ends (LIO-SAM's IMU
+  init). The server window's camera follows from 40 m up. Progress is printed,
+  and at the end the top speed.
+- **Stopping early.** Ctrl+C, getting stuck, or leaving the route keeps the bag
+  up to that point but exits with an error, because the bag doesn't return to
+  the start.
+- **Speed.** The synchronous sim can run slower than real time (about a third
+  over Tailscale), so allow for that. Playback is at real driving speed.
+- **Lidar rays.** It casts `lidar_oversample` (2) times the rays the config's resolution needs. At
+  exactly the minimum the rays land on the filter's azimuth bin edges and some
+  sweeps come out short.
+- **Code layout.** `record_bag.py` holds the command-line options and the tick
+  loop; driving, sensors and recording stay in that one loop, which keeps every
+  LiDAR slice in step with the IMU. The rest is reusable: `carla_frames.py`
+  (CARLA/ROS conversions, shared names and helpers), `sensor_config.py` (loads and
+  checks the configs both scripts use), `carla_sensors.py` (builds
+  sensors from configs and attaches them at mount poses), `route.py` (route planner
+  and follower, no CARLA needed) and `bag_writer.py`. Tests:
+  `python3 -m pytest simulation/tests`.
 
 ## Running the filter
 
 ```bash
-source /opt/ros/jazzy/setup.bash
 python3 simulation/filter_bag.py ${BAG}_raw ${BAG}_filtered
 ```
 
-- With no `--lidar`/`--imu` flags it uses the kart's sensors,
-  [config/airy_lite.yaml](config/airy_lite.yaml) and
-  [config/cv7_ahrs.yaml](config/cv7_ahrs.yaml).
-- Pass configs to use other sensors. Both flags can be repeated, and only the
-  sensors you pass are filtered:
+| Flag | Meaning |
+|---|---|
+| `--lidar`, `--imu` | sensor configs; repeat to filter several. Only the sensors you pass are filtered. Default: the kart's |
+| `--keep-raw` | keep the raw CARLA lidar/IMU topics in the output (otherwise dropped) |
+| `--storage` | `mcap` by default, or `sqlite3` |
+| `--vehicle-frame` | CARLA's vehicle frame, default `carla_base_link` |
+| `--base-frame` | the vehicle frame's name in the output, default `base_link` |
+| `--ground-truth-odom` | raw ground-truth odometry topic, default `/carla/hero/odometry` |
 
-  ```bash
-  python3 simulation/filter_bag.py ${BAG}_raw ${BAG}_filtered \
-    --lidar simulation/config/front_lidar.yaml --lidar simulation/config/rear_lidar.yaml \
-    --imu   simulation/config/cv7_ahrs.yaml
-  ```
-- The output is packaged like a kart recording, so LIO-SAM uses one config for
-  both (see "What's in the filtered bag" below).
-- The raw lidar/IMU topics are dropped unless `--keep-raw` is passed. Any other
-  topic is copied through.
-- Output is written as `mcap` by default (`--storage sqlite3` to change).
+```bash
+python3 simulation/filter_bag.py ${BAG}_raw ${BAG}_filtered \
+  --lidar simulation/config/front_lidar.yaml --lidar simulation/config/rear_lidar.yaml \
+  --imu   simulation/config/cv7_ahrs.yaml
+```
+
+- Any other topic in the raw bag is copied through.
 - Same bag + same `seed` in the configs = identical output.
-- At the end it prints a summary (sweeps, points per sweep, IMU rates). A raw
-  bag that doesn't meet the requirements below is an error; if that's found
-  mid-run, delete the partial output. Missing ground truth only warns.
-- Config typos, missing required keys and wrong types or units are errors.
-- If CARLA's frame or topic names change: `--vehicle-frame` (default
-  `carla_base_link`) and `--ground-truth-odom` (default `/carla/hero/odometry`).
+- It prints a summary at the end (sweeps, points per sweep, IMU rates).
+- Config typos, missing required keys, and wrong types or units are errors. So
+  is a raw bag that doesn't meet [the requirements](#what-the-raw-bag-must-contain);
+  if that's found mid-run, delete the partial output. Missing ground truth only warns.
 
 ### What's in the filtered bag
+
+The output is packaged like a kart recording, so LIO-SAM uses one config for both.
 
 | Topic | Contents | In a real kart bag? |
 |---|---|---|
@@ -64,10 +156,10 @@ python3 simulation/filter_bag.py ${BAG}_raw ${BAG}_filtered
 | `/ground_truth/tf` | CARLA's true pose, `carla_map → base_link` | no; LIO-SAM ignores it |
 | `/ground_truth/odometry` | CARLA's true pose as odometry | no; LIO-SAM ignores it |
 
-There is no `/tf`: on the kart, and in a LIO-SAM run, LIO-SAM itself publishes
-`map → odom → base_link`. Ground truth is kept off `/tf` so it can't fight
-that. Every message is stamped with CARLA's sim time and `/clock` is dropped,
-which is why `ros2 bag info` shows dates in 1970.
+There is no `/tf`: LIO-SAM itself publishes `map → odom → base_link`, so ground
+truth is kept off `/tf` to avoid a conflict. Every message is stamped with
+CARLA's sim time and `/clock` is dropped, which is why `ros2 bag info` shows
+dates in 1970.
 
 ### Playing it back
 
@@ -77,8 +169,8 @@ With LIO-SAM, exactly like a real bag:
 ros2 bag play ${BAG}_filtered --clock
 ```
 
-To view it in rviz without LIO-SAM, plug ground truth into the TF tree and use
-fixed frame `carla_map`:
+To view it in rviz **without** LIO-SAM, plug ground truth into the TF tree and
+use fixed frame `carla_map`:
 
 ```bash
 ros2 bag play ${BAG}_filtered --clock --remap /ground_truth/tf:=/tf
@@ -87,100 +179,74 @@ ros2 bag play ${BAG}_filtered --clock --remap /ground_truth/tf:=/tf
 Never use that remap while LIO-SAM runs: ground truth and LIO-SAM would both
 claim to be `base_link`'s parent, and lookups would flip between them.
 
-- It plays at real driving speed (sim time), even though recording took
-  about 3x longer.
-- To compare with the raw data, filter with `--keep-raw`; the raw CARLA topics
-  are then in the same bag with matching timestamps.
+To compare with the raw data, filter with `--keep-raw`; the raw topics then sit
+in the same bag with matching timestamps.
 
 ## What the raw bag must contain
 
-The filter can only remove and degrade data, so CARLA has to produce at least
-what the real sensors do.
+`record_bag.py` produces all of this. The filter can only remove and degrade
+data, so CARLA has to produce at least what the real sensors do. Any other
+recorder must meet the same requirements.
 
-**LiDAR** (`sensor.lidar.ray_cast`):
+**LiDAR** (`sensor.lidar.ray_cast`)
 - A beam within `beams.tolerance_deg` (0.1°) of every Airy Lite beam, which in
-  practice means matching them exactly: `channels=24`, `upper_fov=33.5`,
-  `lower_fov=-11.5`.
-- `rotation_frequency=10`.
+  practice means matching exactly: `channels=24`, `upper_fov=33.5`, `lower_fov=-11.5`.
+- `rotation_frequency=10`, `range` ≥ 40.
 - Horizontal resolution of 0.6° or finer: `points_per_second` ≥ 144,000 for 24
   channels (more is fine, the filter thins it).
-- `range` ≥ 40.
 - `noise_stddev=0` and `dropoff_general_rate=0`; the filter adds range noise.
 
-**IMU** (`sensor.other.imu`):
+**IMU** (`sensor.other.imu`)
 - At least 100 Hz (`sensor_tick` ≤ 0.01). Faster input is decimated.
 - All `noise_*` attributes 0; the filter adds all IMU errors.
 - **Orientation in every message** (`orientation_covariance[0]` not -1).
   LIO-SAM needs a 9-axis IMU and fails without it. `sensor.other.imu` has no
-  full orientation; the CARLA ROS bridge fills it from the sensor's transform,
-  and any other recorder must too.
+  full orientation, so the recorder fills it from the sensor's transform (the
+  CARLA ROS bridge does the same).
 
-**World:** synchronous mode with `fixed_delta_seconds=0.01`. This is what gives
-the 100 Hz IMU, and it makes each lidar message a 36° slice of the rotation,
-which the filter stitches into full sweeps. Per-point `time` comes from which
-tick a point was in, so it has 10 ms resolution. If CARLA ticks at 0.1 s, each
-message is a whole sweep and every point gets the same time, which LIO-SAM
-can't deskew (an error).
+**World**: synchronous mode with `fixed_delta_seconds=0.01`. This gives the
+100 Hz IMU and makes each lidar message a 36° slice of the rotation, which the
+filter stitches into full sweeps. Per-point `time` comes from which tick a point
+was in, so it has 10 ms resolution. At a 0.1 s tick each message is a whole
+sweep with one time for every point, which LIO-SAM can't deskew (an error).
 
-**Topics and frames (assumed).** There is no official script for recording
-the raw bag yet; one is the next task. Until then, the filter assumes the raw
-bag looks like this:
+### Topics and frames
 
-| Topic | Contents |
+| Raw bag topic | Contents |
 |---|---|
 | `/carla/hero/lidar` | `sensor_msgs/PointCloud2` in ROS convention (x forward, y left, z up), frame `lidar_link` |
 | `/carla/hero/imu` | `sensor_msgs/Imu` in ROS convention, frame `imu_link`, orientation filled in |
-| `/carla/hero/odometry` | ground-truth `nav_msgs/Odometry`, child frame `carla_base_link` |
-| `/tf` | ground truth, `carla_map → carla_base_link` |
+| `/carla/hero/odometry` | ground-truth `nav_msgs/Odometry`, child frame `carla_base_link` (optional) |
+| `/tf` | ground truth, `carla_map → carla_base_link` (optional) |
 | `/tf_static` | `carla_base_link → lidar_link` / `imu_link`, matching [config/mounts.yaml](config/mounts.yaml) |
 | `/clock` | sim time (dropped by the filter) |
 
-Each config's `frame_id` must be under the vehicle frame in `/tf_static`, or
-the output has no transform for that sensor. `/tf` and the odometry are optional.
+| Filtered output | Value | Source |
+|---|---|---|
+| LiDAR topic / frame | `/sensing/lidar/pointcloud` / `lidar_link` | ICD (topic and Frames & Transforms page) |
+| IMU topic / frame | `/sensing/imu/data` / `imu_link` | ICD (topic and Frames & Transforms page) |
 
-If the recording script uses other names, change `topics.input` in the
-configs and pass `--vehicle-frame` / `--ground-truth-odom`; nothing else needs
-editing. The filter turns `carla_base_link` into `base_link` and moves ground
-truth off `/tf` (see "What's in the filtered bag").
+The raw bag must use the same frame names as the configs' `frame_id`, and each
+`frame_id` must be under the vehicle frame in `/tf_static`, or the output has no
+transform for that sensor.
 
-Recording with the synchronous sim can run slower than real time (about a
-third of real time over Tailscale), so allow for that when deciding how long
-to record.
+If the recorder uses other names, change `topics.input` in the configs and pass
+`--vehicle-frame` / `--ground-truth-odom`; nothing else needs editing. The
+filter turns `carla_base_link` into `base_link` and moves ground truth off `/tf`.
 
 ## Mount positions
 
 [config/mounts.yaml](config/mounts.yaml) is the one place that says where each
 sensor sits relative to `base_link`, in ROS axes (x forward, y left, z up,
-metres; roll/pitch/yaw in degrees). Whatever records the raw bag is assumed
-to use it for two things that must agree: where the sensors are attached in
-CARLA, and the `/tf_static` in the bag. The filter passes that `/tf_static`
-through, so nothing else needs editing.
+metres; roll/pitch/yaw in degrees). The recorder uses it for two things that
+must agree: where the sensors are attached in CARLA, and the bag's `/tf_static`.
+The filter passes that `/tf_static` through.
 
-Mounts can be tilted, rotated, or even upside down: set `rpy`, e.g.
-`[0.0, 10.0, 0.0]` tilts forward 10° and `[180.0, 0.0, 0.0]` is upside down.
-Keep variants in separate files. The filter works in each sensor's own frame
-and never assumes it is upright, so only `mounts.yaml` and the recorder's
-rotation change, plus the LIO-SAM extrinsics and step 6 below.
-
-The current values are estimates (lidar 2.5 m up, IMU 1.5 m up, both level
-and centred). When the real ones are known:
-
-1. Put them in `mounts.yaml` and change the `[est]` tags to their source.
-2. Check where `base_link` is defined on the kart. The CARLA car's origin is
-   assumed to be `base_link`; if they differ, the mounts need that offset.
-3. Update the extrinsics table below, including the LIO-SAM values.
-4. Record a new raw bag and filter it. Existing bags keep the old positions.
-5. Check in rviz that `lidar_link` / `imu_link` sit in the right places.
-6. Check the circle of empty ground around the car in the point cloud. It
-   is there because the lidar's lowest beam only reaches the ground some
-   distance away, so its size confirms the lidar height and orientation:
-   - Upright, the lowest beam points 11.5° down, so the circle's radius
-     is about 4.9 × the lidar's height above the ground. At the current
-     2.5 m, that is about 12.3 m.
-   - Upside down, the sensor's top edge (33.5°) faces down instead, so the
-     radius is about 1.5 × the height: about 3.8 m at 2.5 m.
-
-   (Radius = height / tan(downward beam angle).)
+Mounts can be tilted, rotated or upside down: set `rpy`, e.g. `[0.0, 10.0, 0.0]`
+tilts forward 10° and `[180.0, 0.0, 0.0]` is upside down. Keep variants in
+separate files. The filter works in each sensor's own frame and never assumes it
+is upright, so only `mounts.yaml`, the recorder's rotation, the LIO-SAM
+extrinsics and the ground-circle check (step 6 below) change.
 
 ### Extrinsics
 
@@ -214,6 +280,26 @@ with `lidar2Imu` built from `+extrinsicTrans`), so the IMU 1 m below gives
 E.g. the LiDAR upside down gives `extrinsicRot = extrinsicRPY = diag(1, -1, -1)`
 and `extrinsicTrans = [0.0, 0.0, 1.0]`.
 
+### When the real mount positions are known
+
+The current values are estimates (lidar 2.5 m up, IMU 1.5 m up, both level and
+centred).
+
+1. Put the real values in `mounts.yaml` and change the `[est]` tags to their source.
+2. Check where `base_link` is defined on the kart. The CARLA car's origin is
+   assumed to be `base_link`; if they differ, the mounts need that offset.
+3. Update the extrinsics table above, including the LIO-SAM values.
+4. Record a new raw bag and filter it. Existing bags keep the old positions.
+5. Check in rviz that `lidar_link` / `imu_link` sit in the right places.
+6. Check the circle of empty ground around the car in the point cloud. It
+   exists because the lowest beam only reaches the ground some distance away,
+   so its radius (height / tan(downward beam angle)) confirms the lidar height
+   and orientation:
+   - Upright, the lowest beam points 11.5° down: radius ≈ 4.9 × height, about
+     12.3 m at 2.5 m.
+   - Upside down, the top edge (33.5°) faces down: radius ≈ 1.5 × height,
+     about 3.8 m at 2.5 m.
+
 ## What the filter does
 
 Numbers are the default configs' values; each comes from the sensor's config.
@@ -221,34 +307,33 @@ Numbers are the default configs' values; each comes from the sensor's config.
 **LiDAR**, per sweep:
 1. Stitch CARLA's per-tick slices into one 10 Hz rotation.
 2. Keep points beyond 0.1 m (blind zone), inside the horizontal FOV.
-3. Snap each point to the nearest configured beam → `ring` (Airy Lite: 0 = lowest beam).
-   Points not within tolerance of a beam are dropped.
-   Then cap range per beam group: 40 m for channels 7–18, 30 m for the rest.
+3. Snap each point to the nearest configured beam → `ring` (Airy Lite: 0 = lowest
+   beam). Points not within tolerance of a beam are dropped. Then cap range per
+   beam group: 40 m for channels 7–18, 30 m for the rest.
 4. Keep at most one point per ring per 0.6° of azimuth.
-5. Add Gaussian range noise along each ray, sized by the accuracy table for
-   that point's channel and distance (optional dropout).
+5. Add Gaussian range noise along each ray, sized by the accuracy table for that
+   point's channel and distance (optional dropout).
 6. Scale intensity from CARLA's 0–1 to 0–255.
-7. Publish on `/sensing/lidar/pointcloud` as `x y z intensity` (float32),
-   `ring` (uint16), `time` (float32, seconds since the header stamp). This is
-   the Velodyne-style layout LIO-SAM reads (`sensor: velodyne`).
+7. Publish on `/sensing/lidar/pointcloud` as `x y z intensity` (float32), `ring`
+   (uint16), `time` (float32, seconds since the header stamp). This is the
+   Velodyne-style layout LIO-SAM reads (`sensor: velodyne`).
 
 **IMU**, per sample:
 1. Decimate to 100 Hz.
-2. Accel and gyro: add a turn-on bias (drawn once per run), a slowly
-   drifting bias (first-order Gauss-Markov), and white noise.
+2. Accel and gyro: add a turn-on bias (drawn once per run), a slowly drifting
+   bias (first-order Gauss-Markov), and white noise.
 3. Orientation: apply a slowly drifting roll/pitch/heading error to CARLA's
-   orientation. Input without orientation is an error (see "What the raw bag
-   must contain").
+   orientation. Input without orientation is an error.
 4. Set covariances from the datasheet.
 5. Publish on `/sensing/imu/data`.
 
 ## Adding a sensor
 
 Copy the closest existing config, change the values to the new datasheet, and
-pass it with `--lidar` or `--imu`. No code changes are needed. Every sensor
-needs its own `topics.input` and `topics.output`. Keep a source comment on each
-value, as the existing configs do. Unknown keys, missing required keys and
-values of the wrong type are errors.
+pass it with `--lidar` or `--imu`. No code changes are needed. Every sensor needs
+its own `topics.input` and `topics.output`. Keep a source comment on each value,
+as the existing configs do. Unknown keys, missing required keys and values of the
+wrong type are errors.
 
 ### LiDAR config
 
@@ -277,11 +362,11 @@ output layouts other than XYZIRT.
 
 ### IMU config
 
-Values can be bare numbers (SI) or strings with a unit as the datasheet
-prints them, e.g. `30 ug/rtHz`, `0.14 deg/rt-h`, `0.75 mg`. Units: `m/s^2`,
-`g`, `mg`, `ug`, `rad/s`, `deg/s`, `deg/h`, `rad`, `deg`, `s`, `min`, `h`,
-each with an optional `/rtHz`, plus the random walks `m/s/rt-h`, `deg/rt-h`,
-`rad/rt-h`. Each key only takes its kind of unit (e.g. a time for `*_time`).
+Values can be bare numbers (SI) or strings with a unit as the datasheet prints
+them, e.g. `30 ug/rtHz`, `0.14 deg/rt-h`, `0.75 mg`. Units: `m/s^2`, `g`, `mg`,
+`ug`, `rad/s`, `deg/s`, `deg/h`, `rad`, `deg`, `s`, `min`, `h`, each with an
+optional `/rtHz`, plus the random walks `m/s/rt-h`, `deg/rt-h`, `rad/rt-h`. Each
+key only takes its kind of unit (e.g. a time for `*_time`).
 
 | Key | Required | Meaning |
 |---|---|---|
@@ -348,75 +433,63 @@ unless noted.
 Not modelled: scale-factor error, temperature effects, accel/gyro range
 saturation (±4–16 g, ±250–1000 °/s), magnetometer.
 
-### Not from the spec sheets
+### Values not from the spec sheets
 
-Values that aren't printed as numbers in the spec sheets, and why each one is
-set the way it is. Tagged in the configs. Revisit them once there is real
-sensor data.
+These aren't printed as numbers in the spec sheets and are tagged in the
+configs. Revisit them once there is real sensor data.
 
-**Rule:** where something is unknown or can't be defended, choose the
-cleaner option. A sim that is noisier than the real sensor would throw off
-LIO-SAM for reasons the kart never sees, while a slightly clean sim only
-makes tuning a little optimistic.
+**Rule:** where something is unknown or can't be defended, choose the cleaner
+option. A sim noisier than the real sensor would throw off LIO-SAM for reasons
+the kart never sees, while a slightly clean sim only makes tuning a little
+optimistic.
 
-**Exception: max range.** CARLA has no reflectivity, so every ray returns to
-the full range, but the Airy only reaches 60 m on bright targets. Range uses
-the manual's dark-target (10%) figures instead: 40 m central, 30 m outer.
+**Exception: max range.** CARLA has no reflectivity, so every ray returns to the
+full range, but the Airy only reaches 60 m on bright targets. Range uses the
+manual's dark-target (10%) figures instead: 40 m central, 30 m outer.
 
 **Backed by another source**
 - **Ring 0 is the lowest beam.** RoboSense's
   [rs_driver](https://github.com/RoboSense-LiDAR/rs_driver) (`chan_angles.hpp`,
-  `genUserChan`) numbers rings by ascending vertical angle, and has an Airy
-  Lite loader.
+  `genUserChan`) numbers rings by ascending vertical angle, and has an Airy Lite
+  loader.
 - **Lidar accuracy is 1σ.** RoboSense states Airy accuracy as "1cm@1σ" and
   resellers quote these Airy Lite figures as 1σ.
 - **IMU rate 100 Hz.** The default `imu_data_rate` in MicroStrain's
   [ROS driver params](https://github.com/LORD-MicroStrain/microstrain_inertial_driver_common/blob/main/config/params.yml).
 - **Dynamic orientation accuracies (0.5°, 2°) rather than static.** The
-  datasheet footnotes them as "automotive conditions", which is what a drive
-  is.
+  datasheet footnotes them as "automotive conditions", which is what a drive is.
 
 **Derived from the datasheet with standard methods**
-- **Bias drift** is a first-order Gauss-Markov process. Its σ is the
-  datasheet bias instability × 0.664 / 0.618: the datasheet number is the
-  Allan floor / 0.664 (IEEE 952 convention), and a Gauss-Markov process's
-  Allan deviation peaks at 0.618σ. Its τ is the Allan minimum's averaging
-  time / 1.89, where a Gauss-Markov Allan curve peaks
+- **Bias drift** is a first-order Gauss-Markov process. Its σ is the datasheet
+  bias instability × 0.664 / 0.618: the datasheet number is the Allan floor /
+  0.664 (IEEE 952 convention), and a Gauss-Markov process's Allan deviation
+  peaks at 0.618σ. Its τ is the Allan minimum's averaging time / 1.89, where a
+  Gauss-Markov Allan curve peaks
   ([Li, Du, Zhai 2016](https://download.atlantis-press.com/article/25854246.pdf)).
   The minima (~20 s accel, ~600 s gyro) are read by eye off the plots.
 - **White noise at 100 Hz** is read off the Allan plots at τ = 0.01 s (accel
-  ~150 µg, gyro ~75 °/h). That is below noise density × √rate (300 µg,
-  85 °/h): the curves flatten at short τ, so the CV7's internal filtering makes
-  each sample quieter than the density alone predicts. The override only holds
-  at 100 Hz.
+  ~150 µg, gyro ~75 °/h). That is below noise density × √rate (300 µg, 85 °/h):
+  the curves flatten at short τ, so the CV7's internal filtering makes each
+  sample quieter than the density alone predicts. The override only holds at
+  100 Hz.
 
 **Judgment calls with no source**, each set to the clean side
-- **Turn-on bias and orientation accuracy as 3σ bounds.** The datasheet
-  doesn't say whether these are 1σ or limits. Reading them as limits gives a
-  third of the error.
-- **Orientation error τ = 10 s**, about the length of a manoeuvre. AHRS
-  errors come mainly from accelerations and magnetic disturbance while
-  driving, which change on that scale. With σ fixed, τ changes how the error
-  moves, not how big it is, so neither direction is clearly cleaner.
-- **White noise read off the Allan plots** instead of the noise-density
-  formula. The plot gives half the accel noise; it is the datasheet's own
-  measurement, and the cleaner of the two.
+- **Turn-on bias and orientation accuracy as 3σ bounds.** The datasheet doesn't
+  say whether these are 1σ or limits. Reading them as limits gives a third of
+  the error.
+- **Orientation error τ = 10 s**, about the length of a manoeuvre. AHRS errors
+  come mainly from accelerations and magnetic disturbance while driving, which
+  change on that scale. With σ fixed, τ changes how the error moves, not how big
+  it is, so neither direction is clearly cleaner.
+- **White noise read off the Allan plots** instead of the noise-density formula.
+  The plot gives half the accel noise; it is the datasheet's own measurement,
+  and the cleaner of the two.
 - **`dropout_rate: 0`.** Real misses come from dark, shiny or glass surfaces,
   which CARLA doesn't model. There is no figure to base a rate on.
-- **`intensity_scale: 255`** only puts CARLA's 0–1 intensity in the Airy's
-  0–255 range. LIO-SAM and NDT don't use intensity, so this mainly affects
-  rviz colouring.
-- **`beams.tolerance_deg: 0.1`.** 0.1° is 7 cm of height at 40 m, so rings
-  stay sharper than the range noise. It needs CARLA's beams to match exactly.
-- **Per-point `time`** has one CARLA tick (10 ms) of resolution; the real
-  sensor stamps each 2.7 ms packet.
-
-### Topics and frames
-
-| | Value | Source |
-|---|---|---|
-| LiDAR output topic | `/sensing/lidar/pointcloud` | ICD |
-| IMU output topic | `/sensing/imu/data` | ICD |
-| LiDAR frame id | `lidar_link` | ICD Frames & Transforms page; the raw bag must use the same name |
-| IMU frame id | `imu_link` | ICD Frames & Transforms page; the raw bag must use the same name |
-| Input topics | `/carla/hero/lidar`, `/carla/hero/imu` | assumed (no official recording script yet) |
+- **`intensity_scale: 255`** only puts CARLA's 0–1 intensity in the Airy's 0–255
+  range. LIO-SAM and NDT don't use intensity, so this mainly affects rviz
+  colouring.
+- **`beams.tolerance_deg: 0.1`.** 0.1° is 7 cm of height at 40 m, so rings stay
+  sharper than the range noise. It needs CARLA's beams to match exactly.
+- **Per-point `time`** has one CARLA tick (10 ms) of resolution; the real sensor
+  stamps each 2.7 ms packet.
