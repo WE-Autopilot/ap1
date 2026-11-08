@@ -2,6 +2,10 @@
 # mounts the module's source and idles so you can shell in and build.
 # Dev images have no prebuilt workspace: everything in /ws/src is built in the
 # container with colcon, including ap1_msgs.
+#
+# extends merges profiles with the extended service's, so every service here
+# replaces them with !override. Otherwise `--profile perception-cpu` would
+# also start perception-dev-cpu.
 
 services:
   #################### PERCEPTION ####################
@@ -9,7 +13,7 @@ services:
     extends:
       file: docker-compose.yaml
       service: perception-cpu
-    profiles: [perception-dev-cpu]
+    profiles: !override [perception-dev-cpu]
     image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:cpu-dev
     # Only deploy services come back after a crash or reboot
     restart: "no"
@@ -29,7 +33,7 @@ services:
     extends:
       file: docker-compose.yaml
       service: perception-gpu
-    profiles: [perception-dev-gpu]
+    profiles: !override [perception-dev-gpu]
     image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:gpu-dev
     restart: "no"
     volumes:
@@ -46,7 +50,7 @@ services:
     extends:
       file: docker-compose.yaml
       service: control
-    profiles: [control-dev]
+    profiles: !override [control-dev]
     image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/control:cpu-dev
     restart: "no"
     volumes:

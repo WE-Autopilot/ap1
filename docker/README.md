@@ -17,7 +17,7 @@ it only has a CPU image (see [Control](#control)).
 
 ## Setup
 
-1. Docker with Buildx and Compose.
+1. Docker with Buildx and Compose (2.24 or newer).
    - Arch: `sudo pacman -S docker docker-buildx docker-compose`
    - Ubuntu: [Docker's apt repo](https://docs.docker.com/engine/install/ubuntu/)
      (includes `docker-buildx-plugin` and `docker-compose-plugin`)
