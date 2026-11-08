@@ -11,6 +11,8 @@
 //   docker/base.Dockerfile      base-<variant> (stage `base`), and the shared pipeline
 //                               that turns a module into <module>-<variant> (stage `deploy`)
 //                               and <module>-dev-<variant> (stage `develop`)
+//   docker/all.Dockerfile       merges every module's sources for the all-modules
+//                               images (all-deploy, all-dev-<variant>)
 
 variable "AP1_REGISTRY" {
   default = "ghcr.io/we-autopilot/ap1"
@@ -180,4 +182,71 @@ target "control-dev" {
     "module-deps"   = "target:control-deps"
   }
   tags = ["${AP1_REGISTRY}/control:cpu-dev"]
+}
+
+######################### all modules #########################
+// Every module in one image. all.Dockerfile merges the module source stages.
+// The module dependencies stages are stacked instead: each one is built with
+// the previous module's stage as its `base`.
+// Adding a module: a COPY line in all.Dockerfile, its source in all-source's
+// contexts, and one more step in the all-deps stack.
+// Both are matrixed so rosdep_scan resolves package.xml conditions with the
+// variant's AP1_GPU (onnxruntime vs onnxruntime-gpu).
+
+target "all-source" {
+  name       = "all-source-${v.name}"
+  matrix     = { v = VARIANTS }
+  context    = "."
+  dockerfile = "docker/all.Dockerfile"
+  target     = "source"
+  contexts = {
+    base                = "target:base-${v.name}"
+    "perception-source" = "target:perception-source-${v.name}"
+    // control has no variants: its source files are the same for both
+    "control-source" = "target:control-source"
+  }
+  cache-from = cache_from("all-source-${v.name}")
+  cache-to   = cache_to("all-source-${v.name}")
+}
+
+target "all-deps" {
+  name       = "all-deps-${v.name}"
+  matrix     = { v = VARIANTS }
+  context    = "."
+  dockerfile = "docker/control.Dockerfile"
+  target     = "dependencies"
+  contexts   = { base = "target:perception-deps-${v.name}" }
+  cache-from = cache_from("all-deps-${v.name}")
+  cache-to   = cache_to("all-deps-${v.name}")
+}
+
+// Deploy image: GPU only, like the car. Compose runs one container per module from it
+target "all-deploy" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "deploy"
+  contexts = {
+    "module-source" = "target:all-source-gpu"
+    "module-deps"   = "target:all-deps-gpu"
+  }
+  tags = compact([
+    "${AP1_REGISTRY}/all:gpu",
+    notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/all:gpu-${GIT_SHA}" : "",
+  ])
+  cache-from = cache_from("all-deploy")
+  cache-to   = cache_to("all-deploy")
+}
+
+// Dev image: every module's dependencies + dev tools; source is mounted and built at runtime
+target "all-dev" {
+  name       = "all-dev-${v.name}"
+  matrix     = { v = VARIANTS }
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "develop"
+  contexts = {
+    "module-source" = "target:all-source-${v.name}"
+    "module-deps"   = "target:all-deps-${v.name}"
+  }
+  tags = ["${AP1_REGISTRY}/all:${v.name}-dev"]
 }
