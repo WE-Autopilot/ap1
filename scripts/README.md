@@ -53,11 +53,25 @@ node.
 using lio_sam and saves pcd map files, a log file, and .tum
 trajectory files to the specified output directory.
 
-Example use:
+Example use A (Paper dataset):
 ```bash
 python3 scripts/run_lio_sam.py \
     --bag <path>/paper_dataset \
     --params <path>/config/params.yaml \
     --rate 0.5 \
-    --output <path>/results \
+    --output <path>/results
 ```
+
+Example use B (CARLA filtered bag):
+```bash
+python3 scripts/run_lio_sam.py \
+    --bag <path>/<bag>_filtered \
+    --params src/mapping/config/lio_sam_carla.yaml \
+    --launch-pkg ap1_mapping \
+    --launch-file lio_sam_carla.launch.py \
+    --rate 0.5 \
+    --output <path>/results \
+    --ground-truth
+```
+
+Note: Both configuration files have `savePCD: true` (LIO-SAM saves the map a second time on shutdown (harmless, just slower)).

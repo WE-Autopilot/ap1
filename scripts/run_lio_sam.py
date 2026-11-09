@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 
 """
@@ -29,14 +28,18 @@ python3 scripts/run_lio_sam.py \
     --params /config/params.yaml \
     --rate 0.5 \
     --output <path>/results
+Note: Example #1 uses the stock run.launch.py from LIOSAM.
+While Example #2 uses the carla bag dedicated launch script.
 
 Example #2 (for CARLA filtered bags):
 python3 scripts/run_lio_sam.py \
-    --bag <path>/carla_filtered \
-    --params /config/params.yaml \
-    --rate 0.5 \
-    --output <path>/results
-    --ground-truth
+--bag <path>/<bag>_filtered \
+--params src/mapping/config/lio_sam_carla.yaml \
+--launch-pkg ap1_mapping \
+--launch-file lio_sam_carla.launch.py \
+--rate 0.5 \
+--output <path>/results \
+--ground-truth
 
 Requirements:
 - ROS 2 Jazzy
@@ -57,7 +60,6 @@ import sys
 from pathlib import Path
 import subprocess
 import shlex
-import shutil
 import time
 import os
 import signal
@@ -81,89 +83,9 @@ qos = QoSProfile(
 ROS_SETUP = Path("/opt/ros/jazzy/setup.bash")
 
 # AP1 workspace
-AP1_WORKSPACE = Path.home() / "WEAP/ap1"
+AP1_WORKSPACE = Path(__file__).resolve().parents[1]
 WORKSPACE_SETUP = AP1_WORKSPACE / "install/setup.bash"
 
-class OdometryMonitor:
-
-    def __init__(self):
-
-        self.node = Node("lio_sam_health_check")
-
-        self.last_odom_time = None
-
-        qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10
-        )
-
-        self.node.create_subscription(
-            Odometry,
-            "/lio_sam/mapping/odometry",
-            self.odometry_callback,
-            qos
-        )
-
-        # gives each node its own executor, keeping the same ROS context
-        self.executor = SingleThreadedExecutor()
-        self.executor.add_node(self.node)
-
-        self.spin_thread = threading.Thread(
-            target=self.executor.spin,
-            daemon=True
-        )
-
-        self.spin_thread.start()
-
-    def odometry_callback(self, msg):
-        self.last_odom_time = time.monotonic()
-
-    def check_health(self, timeout=30):
-        start_time = time.monotonic()
-
-        while time.monotonic() - start_time < timeout:
-
-            if self.last_odom_time is not None:
-                print("[INFO] LIO-SAM is publishing odometry.")
-                return True
-
-            time.sleep(0.1)
-
-        print("[ERROR] LIO-SAM did not publish odometry within timeout.")
-        return False
-
-    def wait_for_idle(self, idle_timeout=3.0, max_wait=60.0):
-        start_time = time.monotonic()
-
-        if self.last_odom_time is None:
-            print("[ERROR] No odometry received.")
-            return False
-
-        while time.monotonic() - start_time < max_wait:
-
-            idle_time = time.monotonic() - self.last_odom_time
-
-            if idle_time >= idle_timeout:
-                print(
-                    f"[INFO] LIO-SAM has been idle for "
-                    f"{idle_time:.1f} seconds."
-                )
-                return True
-
-            time.sleep(0.1)
-
-        print("[ERROR] LIO-SAM did not become idle within timeout.")
-        return False
-
-    def shutdown(self):
-
-        self.executor.shutdown(timeout_sec=5)
-
-        self.spin_thread.join(timeout=5)
-
-        self.executor.remove_node(self.node)
-        self.node.destroy_node()
 
 class TrajectoryRecorder(Node):
 
@@ -172,6 +94,9 @@ class TrajectoryRecorder(Node):
 
         self.lio_trajectory = []
         self.gt_trajectory = []
+        self.optimized_trajectory = []
+
+        self.last_odom_time = None
 
         self.lock = threading.Lock()
 
@@ -183,10 +108,7 @@ class TrajectoryRecorder(Node):
             qos
         )
 
-        # Store the latest loop-closure-optimized trajectory
-        self.optimized_trajectory = []
-
-        # Subscribe to path
+        # Subscribe to optimized LIO-SAM path
         self.path_subscription = self.create_subscription(
             RosPath,
             "/lio_sam/mapping/path",
@@ -232,17 +154,23 @@ class TrajectoryRecorder(Node):
         ]
 
     def lio_callback(self, msg):
+        """Record LIO-SAM odometry and update its last received time."""
+
         with self.lock:
+            self.last_odom_time = time.monotonic()
+
             self.lio_trajectory.append(
                 self.extract_pose(msg)
             )
 
     def gt_callback(self, msg):
+        """Record ground-truth odometry."""
+
         with self.lock:
             self.gt_trajectory.append(
                 self.extract_pose(msg)
             )
-            
+
     def path_callback(self, msg):
         """Store the latest optimized LIO-SAM path."""
 
@@ -267,6 +195,50 @@ class TrajectoryRecorder(Node):
 
         with self.lock:
             self.optimized_trajectory = trajectory
+
+    def check_health(self, timeout=30):
+        """Wait until LIO-SAM starts publishing odometry."""
+
+        start_time = time.monotonic()
+
+        while time.monotonic() - start_time < timeout:
+
+            with self.lock:
+                if self.last_odom_time is not None:
+                    print("[INFO] LIO-SAM is publishing odometry.")
+                    return True
+
+            time.sleep(0.1)
+
+        print("[ERROR] LIO-SAM did not publish odometry within timeout.")
+        return False
+
+    def wait_for_idle(self, idle_timeout=3.0, max_wait=60.0):
+        """Wait until LIO-SAM stops publishing odometry."""
+
+        start_time = time.monotonic()
+
+        with self.lock:
+            if self.last_odom_time is None:
+                print("[ERROR] No odometry received.")
+                return False
+
+        while time.monotonic() - start_time < max_wait:
+
+            with self.lock:
+                idle_time = time.monotonic() - self.last_odom_time
+
+            if idle_time >= idle_timeout:
+                print(
+                    f"[INFO] LIO-SAM has been idle for "
+                    f"{idle_time:.1f} seconds."
+                )
+                return True
+
+            time.sleep(0.1)
+
+        print("[ERROR] LIO-SAM did not become idle within timeout.")
+        return False
 
     def save_trajectory(self, trajectory, output_file):
         """Save a trajectory in TUM format."""
@@ -462,14 +434,13 @@ def start_pipeline(
     odom_monitor = None
 
     try:
-        odom_monitor = OdometryMonitor()
 
         # Task 3: Play bag
         bag_process = play_bag(
             bag_path,
             rate,
             lio_process,
-            odom_monitor
+            recorder
         )
 
         print("Bag playback completed.")
@@ -482,7 +453,7 @@ def start_pipeline(
             )
 
         # Wait for final odometry messages
-        if not odom_monitor.wait_for_idle(
+        if not recorder.wait_for_idle(
             idle_timeout=3.0,
             max_wait=60.0
         ):
@@ -502,9 +473,6 @@ def start_pipeline(
         return lio_process, bag_process, saved_maps
 
     finally:
-        # cleanup
-        if odom_monitor is not None:
-            odom_monitor.shutdown()
 
         stop_trajectory_recorder(
             recorder,
@@ -515,8 +483,13 @@ def start_pipeline(
         if rclpy.ok():
             rclpy.shutdown()
 
-        os.killpg(lio_process.pid, signal.SIGINT)
-        
+        if lio_process.poll() is None:  
+            try:  
+                os.killpg(lio_process.pid, signal.SIGINT)  
+            except ProcessLookupError:  
+                pass
+
+
 def launch_lio_sam(params_path, launch_pkg, launch_file, output_dir):
     """
     Launch LIO-SAM using the supplied parameter file.
@@ -572,7 +545,7 @@ def launch_lio_sam(params_path, launch_pkg, launch_file, output_dir):
     return process
 
 
-def play_bag(bag_path, rate, lio_process, odom_monitor):
+def play_bag(bag_path, rate, lio_process, recorder):
 
     print("Waiting for LIO-SAM to initialize...")
 
@@ -593,7 +566,8 @@ def play_bag(bag_path, rate, lio_process, odom_monitor):
         str(bag_path),
         "--clock",
         "--rate",
-        str(rate)
+        str(rate),
+        "--disable-keyboard-controls"
     ]
 
     bag_process = subprocess.Popen(command)
@@ -601,7 +575,7 @@ def play_bag(bag_path, rate, lio_process, odom_monitor):
     print(f"Bag playback started (PID: {bag_process.pid})")
 
     # Verify LIO-SAM starts publishing odometry
-    if not odom_monitor.check_health(timeout=30):
+    if not recorder.check_health(timeout=30):
         bag_process.terminate()
         bag_process.wait()
         raise RuntimeError("LIO-SAM failed its health check.")
