@@ -390,13 +390,26 @@ include a module in the all-modules images, also add a `COPY` line in
 
 ## CI
 
-`.github/workflows/perception-images.yml` builds both variants on every PR
-that touches `docker/`, `src/perception/` or `src/msgs/`, and runs the deploy
-tests in each.
-On `main` it pushes `ghcr.io/we-autopilot/ap1/perception:{cpu,gpu}` plus a
-per-commit tag. The runners have no GPU, so the GPU image's inference runs on
-CPU there. CI only checks that its onnxruntime has CUDA support.
-Control images aren't built in CI yet.
+Two workflows build the deploy images on every PR that touches their module,
+`docker/` or `src/msgs/`:
+
+- `.github/workflows/perception-images.yml` builds both perception variants
+  and runs the deploy tests in each. The runners have no GPU, so the GPU
+  image's inference runs on CPU there; CI only checks that its onnxruntime has
+  CUDA support.
+- `.github/workflows/control-images.yml` builds the control image and checks
+  that `control_node` starts with its installed config and stays up.
+
+On `main` they push `ghcr.io/we-autopilot/ap1/{perception,control}` images plus
+a per-commit tag. They also run on pushes to `development`, without pushing
+images, so PRs into `development` start from a warm build cache.
+
+The build cache lives in the GitHub Actions cache, one scope per image
+(`perception-cpu`, `perception-gpu`, `control`; see `cache_from` and `cache_to`
+in `docker-bake.hcl`). A PR can read its own cache and its base branch's. A
+build only reinstalls packages when a `package.xml` or `pip-constraints.txt`
+changes, as long as the rule in [How the build works](#how-the-build-works)
+holds. The all-modules images aren't built in CI.
 
 ## Not covered yet
 
