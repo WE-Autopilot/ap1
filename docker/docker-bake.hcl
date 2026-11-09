@@ -39,9 +39,14 @@ variable "VARIANTS" {
   ]
 }
 
+// One cache scope per image: perception-cpu, perception-gpu, control, all-gpu.
+// Only the image's own target exports it. mode=max includes every stage the
+// image was built from, so the base and module stages are stored once per
+// image instead of once per target (the repo's cache is capped at 10 GB).
+// Every target imports the scopes of the images built on it.
 function "cache_from" {
-  params = [scope]
-  result = CI ? ["type=gha,scope=${scope}"] : []
+  params = [scopes]
+  result = CI ? [for scope in scopes : "type=gha,scope=${scope}"] : []
 }
 
 function "cache_to" {
@@ -73,8 +78,7 @@ target "base" {
     ROS_DISTRO    = ROS_DISTRO
   }
   tags       = ["${AP1_REGISTRY}/base:${ROS_DISTRO}-${v.name}"]
-  cache-from = cache_from("base-${v.name}")
-  cache-to   = cache_to("base-${v.name}")
+  cache-from = cache_from(v.name == "cpu" ? ["perception-cpu", "control"] : ["perception-gpu", "all-gpu"])
 }
 
 ######################### perception #########################
@@ -86,8 +90,7 @@ target "perception-source" {
   dockerfile = "docker/perception.Dockerfile"
   target     = "source"
   contexts   = { base = "target:base-${v.name}" }
-  cache-from = cache_from("perception-source-${v.name}")
-  cache-to   = cache_to("perception-source-${v.name}")
+  cache-from = cache_from(["perception-${v.name}", "all-${v.name}"])
 }
 
 target "perception-deps" {
@@ -97,8 +100,7 @@ target "perception-deps" {
   dockerfile = "docker/perception.Dockerfile"
   target     = "dependencies"
   contexts   = { base = "target:base-${v.name}" }
-  cache-from = cache_from("perception-deps-${v.name}")
-  cache-to   = cache_to("perception-deps-${v.name}")
+  cache-from = cache_from(["perception-${v.name}", "all-${v.name}"])
 }
 
 // Deploy image: what runs on the car / in integration tests
@@ -116,7 +118,7 @@ target "perception" {
     "${AP1_REGISTRY}/perception:${v.name}",
     notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/perception:${v.name}-${GIT_SHA}" : "",
   ])
-  cache-from = cache_from("perception-${v.name}")
+  cache-from = cache_from(["perception-${v.name}"])
   cache-to   = cache_to("perception-${v.name}")
 }
 
@@ -142,8 +144,7 @@ target "control-source" {
   dockerfile = "docker/control.Dockerfile"
   target     = "source"
   contexts   = { base = "target:base-cpu" }
-  cache-from = cache_from("control-source")
-  cache-to   = cache_to("control-source")
+  cache-from = cache_from(["control", "all-gpu"])
 }
 
 target "control-deps" {
@@ -151,8 +152,7 @@ target "control-deps" {
   dockerfile = "docker/control.Dockerfile"
   target     = "dependencies"
   contexts   = { base = "target:base-cpu" }
-  cache-from = cache_from("control-deps")
-  cache-to   = cache_to("control-deps")
+  cache-from = cache_from(["control"])
 }
 
 // Deploy image: what runs on the car / in integration tests
@@ -168,7 +168,7 @@ target "control" {
     "${AP1_REGISTRY}/control:cpu",
     notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/control:cpu-${GIT_SHA}" : "",
   ])
-  cache-from = cache_from("control")
+  cache-from = cache_from(["control"])
   cache-to   = cache_to("control")
 }
 
@@ -205,8 +205,7 @@ target "all-source" {
     // control has no variants: its source files are the same for both
     "control-source" = "target:control-source"
   }
-  cache-from = cache_from("all-source-${v.name}")
-  cache-to   = cache_to("all-source-${v.name}")
+  cache-from = cache_from(["all-${v.name}"])
 }
 
 target "all-deps" {
@@ -216,8 +215,7 @@ target "all-deps" {
   dockerfile = "docker/control.Dockerfile"
   target     = "dependencies"
   contexts   = { base = "target:perception-deps-${v.name}" }
-  cache-from = cache_from("all-deps-${v.name}")
-  cache-to   = cache_to("all-deps-${v.name}")
+  cache-from = cache_from(["all-${v.name}"])
 }
 
 // Deploy image: GPU only, like the car. Compose runs one container per module from it
@@ -233,8 +231,8 @@ target "all-deploy" {
     "${AP1_REGISTRY}/all:gpu",
     notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/all:gpu-${GIT_SHA}" : "",
   ])
-  cache-from = cache_from("all-deploy")
-  cache-to   = cache_to("all-deploy")
+  cache-from = cache_from(["all-gpu"])
+  cache-to   = cache_to("all-gpu")
 }
 
 // Dev image: every module's dependencies + dev tools; source is mounted and built at runtime
