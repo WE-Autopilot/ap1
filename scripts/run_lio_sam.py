@@ -79,7 +79,6 @@ qos = QoSProfile(
     depth=10
 )
 
-
 ROS_SETUP = Path("/opt/ros/jazzy/setup.bash")
 
 # AP1 workspace
