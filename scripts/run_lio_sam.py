@@ -33,13 +33,13 @@ While Example #2 uses the carla bag dedicated launch script.
 
 Example #2 (for CARLA filtered bags):
 python3 scripts/run_lio_sam.py \
---bag <path>/<bag>_filtered \
---params src/mapping/config/lio_sam_carla.yaml \
---launch-pkg ap1_mapping \
---launch-file lio_sam_carla.launch.py \
---rate 0.5 \
---output <path>/results \
---ground-truth
+    --bag <path>/<bag>_filtered \
+    --params src/mapping/config/lio_sam_carla.yaml \
+    --launch-pkg ap1_mapping \
+    --launch-file lio_sam_carla.launch.py \
+    --rate 0.5 \
+    --output <path>/results \
+    --ground-truth
 
 Requirements:
 - ROS 2 Jazzy
@@ -429,8 +429,6 @@ def start_pipeline(
     recorder, recorder_executor, recorder_thread = (
         start_trajectory_recorder(record_ground_truth)
     )
-
-    odom_monitor = None
 
     try:
 
