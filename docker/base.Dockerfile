@@ -64,15 +64,10 @@ ENV ROS_DISTRO=${ROS_DISTRO} \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     PIP_ROOT_USER_ACTION=ignore
 
-# ROS + AP1 environment for the entrypoint and for every interactive shell (docker exec)
-COPY docker/config/ap1_env.sh /usr/local/share/ap1/ap1_env.sh
-COPY docker/config/ap1_entrypoint.sh /usr/local/bin/ap1_entrypoint.sh
-RUN echo 'source /usr/local/share/ap1/ap1_env.sh' >> /etc/bash.bashrc
-
-# set workspace and source ROS + AP1 workspaces on entry
+# No COPY from the build context in this stage: bake passes it to other targets
+# as a context, and a local COPY here breaks the cache of every stage built on
+# it, including the slow dependencies install (see docker/README.md).
 WORKDIR ${AP1_WS}
-ENTRYPOINT ["/usr/local/bin/ap1_entrypoint.sh"]
-CMD ["bash"]
 
 ######################## rosdep_scan ########################
 FROM module-source AS rosdep_scan
@@ -105,6 +100,15 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     xargs -r -a /tmp/pip_packages pip install --no-cache-dir -c /tmp/pip-constraints.txt && \
     rm /tmp/apt_packages /tmp/pip_packages /tmp/pip-constraints.txt
+
+# After the install, so editing these files doesn't reinstall packages.
+# ROS + AP1 environment for the entrypoint and for every interactive shell (docker exec)
+COPY docker/config/ap1_env.sh /usr/local/share/ap1/ap1_env.sh
+COPY docker/config/ap1_entrypoint.sh /usr/local/bin/ap1_entrypoint.sh
+RUN echo 'source /usr/local/share/ap1/ap1_env.sh' >> /etc/bash.bashrc
+# source ROS + AP1 workspaces on entry
+ENTRYPOINT ["/usr/local/bin/ap1_entrypoint.sh"]
+CMD ["bash"]
 
 ########################### build ###########################
 FROM dependencies AS build

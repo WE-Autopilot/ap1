@@ -256,7 +256,8 @@ shared-memory files once with
 2. Pin any pip package in `config/pip-constraints.txt`. rosdep can't pin
    versions, so this file is what keeps builds reproducible.
 3. Something rosdep can't express at all goes in the `dependencies` stage of
-   `<module>.Dockerfile`. This is a last resort.
+   `<module>.Dockerfile`. This is a last resort. Install it with `RUN`; don't
+   `COPY` files from the repo there (see [How the build works](#how-the-build-works)).
 
 If a dependency differs between CPU and GPU, use a condition on `AP1_GPU`, like
 the onnxruntime entries in `package.xml`.
@@ -302,6 +303,13 @@ docker/                       how images are built
      or build tree. This image runs on the car.
    - `develop` is `dependencies` plus dev tools, with no prebuilt workspace:
      you build the mounted source in `/ws`.
+
+Only `source` stages may `COPY` from the repo. The `base` stage and the module
+`dependencies` stages are passed between bake targets as contexts, and a
+`COPY` from the build context in one of them breaks the cache of everything
+built on it: every CI build would reinstall all packages. That's why the
+entrypoint and shell setup are copied in `base.Dockerfile`'s `dependencies`
+stage, after the install.
 
 Dev build output lives in named volumes, one set per variant
 (`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
