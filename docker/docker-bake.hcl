@@ -1,5 +1,5 @@
 // Build graph for AP1 images: a base image per hardware variant, then modules on top.
-// Used locally and by CI, so builds are defined in exactly one place.
+// Docker bake and HCL file reference: https://docs.docker.com/build/bake/reference/ 
 //
 // Run from the repo root:
 //   docker buildx bake -f docker/docker-bake.hcl --load perception-cpu
@@ -11,9 +11,6 @@
 //   docker/base.Dockerfile      base-<variant> (stage `base`), and the shared pipeline
 //                               that turns a module into <module>-<variant> (stage `deploy`)
 //                               and <module>-dev-<variant> (stage `develop`)
-//
-// Variables are read from the environment, under the same names compose uses
-// (modules/docker-compose.yaml), e.g. AP1_UID=$(id -u) for the dev image.
 
 variable "AP1_REGISTRY" {
   default = "ghcr.io/we-autopilot/ap1"
@@ -23,30 +20,19 @@ variable "ROS_DISTRO" {
   default = "jazzy"
 }
 
-// Set in CI to add an immutable per-commit tag
 variable "GIT_SHA" {
   default = ""
 }
 
-// GitHub Actions sets CI=true, which turns on the GitHub Actions layer cache
+// GitHub Actions sets CI=true, turns on the GitHub Actions layer cache
 variable "CI" {
   default = false
 }
 
-// Dev images give their "ubuntu" user the host's IDs, so bind-mounted files keep their owner
-variable "AP1_UID" {
-  default = "1000"
-}
-variable "AP1_GID" {
-  default = "1000"
-}
-
-// Hardware variants. Adding one (e.g. Jetson) means adding an entry here;
-// module Dockerfiles don't change.
+// Hardware variants. TODO: add arm64 image for Jetson Orin deployment
 variable "VARIANTS" {
   default = [
     { name = "cpu", image = "ubuntu:24.04", gpu = "0" },
-    // CUDA/cuDNN must match onnxruntime-gpu in docker/config/pip-constraints.txt
     { name = "gpu", image = "nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04", gpu = "1" },
   ]
 }
@@ -65,11 +51,17 @@ group "default" {
   targets = ["perception-cpu"]
 }
 
+# builds every deploy image in a single command, for testing
+group "all" {
+  targets = ["perception-cpu", "control"]
+}
+
 ############################ base ############################
 
+# Each target defines a docker build invocation
 target "base" {
-  matrix     = { v = VARIANTS }
   name       = "base-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/base.Dockerfile"
   target     = "base"
@@ -86,8 +78,8 @@ target "base" {
 ######################### perception #########################
 
 target "perception-source" {
-  matrix     = { v = VARIANTS }
   name       = "perception-source-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/perception.Dockerfile"
   target     = "source"
@@ -97,8 +89,8 @@ target "perception-source" {
 }
 
 target "perception-deps" {
-  matrix     = { v = VARIANTS }
   name       = "perception-deps-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/perception.Dockerfile"
   target     = "dependencies"
@@ -109,8 +101,8 @@ target "perception-deps" {
 
 // Deploy image: what runs on the car / in integration tests
 target "perception" {
-  matrix     = { v = VARIANTS }
   name       = "perception-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/base.Dockerfile"
   target     = "deploy"
@@ -126,10 +118,10 @@ target "perception" {
   cache-to   = cache_to("perception-${v.name}")
 }
 
-// Dev image: dependencies + dev tools + host user's IDs; source is mounted and built at runtime
+// Dev image: dependencies + dev tools; source is mounted and built at runtime
 target "perception-dev" {
-  matrix     = { v = VARIANTS }
   name       = "perception-dev-${v.name}"
+  matrix     = { v = VARIANTS }
   context    = "."
   dockerfile = "docker/base.Dockerfile"
   target     = "develop"
@@ -137,9 +129,55 @@ target "perception-dev" {
     "module-source" = "target:perception-source-${v.name}"
     "module-deps"   = "target:perception-deps-${v.name}"
   }
-  args = {
-    USER_UID = AP1_UID
-    USER_GID = AP1_GID
-  }
   tags = ["${AP1_REGISTRY}/perception:${v.name}-dev"]
+}
+
+######################### control #########################
+// CPU only: control has no GPU dependencies, so no matrix
+
+target "control-source" {
+  context    = "."
+  dockerfile = "docker/control.Dockerfile"
+  target     = "source"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from("control-source")
+  cache-to   = cache_to("control-source")
+}
+
+target "control-deps" {
+  context    = "."
+  dockerfile = "docker/control.Dockerfile"
+  target     = "dependencies"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from("control-deps")
+  cache-to   = cache_to("control-deps")
+}
+
+// Deploy image: what runs on the car / in integration tests
+target "control" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "deploy"
+  contexts = {
+    "module-source" = "target:control-source"
+    "module-deps"   = "target:control-deps"
+  }
+  tags = compact([
+    "${AP1_REGISTRY}/control:cpu",
+    notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/control:cpu-${GIT_SHA}" : "",
+  ])
+  cache-from = cache_from("control")
+  cache-to   = cache_to("control")
+}
+
+// Dev image: dependencies + dev tools; source is mounted and built at runtime
+target "control-dev" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "develop"
+  contexts = {
+    "module-source" = "target:control-source"
+    "module-deps"   = "target:control-deps"
+  }
+  tags = ["${AP1_REGISTRY}/control:cpu-dev"]
 }

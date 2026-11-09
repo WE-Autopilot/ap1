@@ -1,8 +1,7 @@
-# Perception module. Defines only what's specific to perception;
+# Perception module. Copies over source code built by colcon and relevant to perception.
+# Also present as an intermediary for dependency management in build stages.
 
 ########################## source ##########################
-# Everything colcon builds in this module.
-# Here we build ap1 messages (for object class list specifically) and perception
 FROM base AS source
 WORKDIR ${AP1_WS}/src
 # ap1_msgs: the message package every module shares
@@ -17,3 +16,4 @@ RUN rm -f perception/pyproject.toml perception/uv.lock perception/.python-versio
 # Dependencies rosdep can't express go here. Use it as a last resort: anything
 # declared in src/perception/package.xml is installed by base.Dockerfile.
 FROM base AS dependencies
+ENV AP1_PERCEPTION_VENV=none
