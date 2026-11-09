@@ -1,0 +1,96 @@
+# Builds the perception images (CPU and GPU), smoke-tests them, and on main
+# pushes them to ghcr.io/we-autopilot/ap1/perception. See docker/README.md.
+name: Perception images
+
+on:
+  pull_request:
+    paths:
+      - "docker/**"
+      - "src/perception/**"
+      - ".dockerignore"
+      - "src/msgs/**"
+      - ".github/workflows/perception-images.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - "src/perception/**"
+      - ".dockerignore"
+      - "src/msgs/**"
+      - ".github/workflows/perception-images.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/we-autopilot/ap1/perception
+  YOLO_MODEL: src/perception/ap1_perception/yolo/yolo11n.onnx
+  PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: perception (${{ matrix.variant }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [cpu, gpu]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Only the YOLO model is needed (for the smoke test). Caching the LFS object
+      # avoids spending the org's LFS bandwidth on every run.
+      - name: Restore YOLO model from cache
+        uses: actions/cache@v6
+        with:
+          path: .git/lfs/objects
+          key: lfs-${{ hashFiles(env.YOLO_MODEL) }}
+      - name: Fetch YOLO model
+        run: git lfs pull --include "$YOLO_MODEL"
+
+      # The GPU image is several GB; hosted runners start with limited free disk
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/bake-action@v7
+        env:
+          GIT_SHA: ${{ github.sha }}
+        with:
+          source: .
+          files: docker/docker-bake.hcl
+          targets: perception-${{ matrix.variant }}
+          load: true
+
+      # Hosted runners have no GPU: the GPU image runs inference on CPU here, but
+      # the test still checks its onnxruntime has CUDA support.
+      - name: Smoke test
+        run: |
+          docker run --rm \
+            -v "$PWD/$YOLO_MODEL:/opt/ap1/models/yolo11n.onnx:ro" \
+            -v "$PWD/docker/tests:/tests:ro" \
+            "$IMAGE:${{ matrix.variant }}" \
+            python3 /tests/perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
+
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: env.PUSH == 'true'
+        run: docker push --all-tags "$IMAGE"

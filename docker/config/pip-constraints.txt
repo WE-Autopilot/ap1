@@ -1,0 +1,12 @@
+# Version pins for packages that rosdep installs with pip (keys ending in -pip).
+# rosdep itself can't pin versions, so base.Dockerfile applies this file to
+# every pip install.
+
+# Must stay at the apt version (python3-numpy on Ubuntu 24.04). cv_bridge and
+# other apt-built ROS packages are compiled against it; pip must never replace it.
+numpy==1.26.4
+
+onnxruntime==1.31.0
+# 1.31 is built for CUDA 13.0 + cuDNN 9: keep in step with the GPU base image
+# in docker-bake.hcl
+onnxruntime-gpu==1.31.0
