@@ -10,8 +10,11 @@ on:
       - ".dockerignore"
       - "src/msgs/**"
       - ".github/workflows/perception-images.yml"
+  # Builds on development too, without pushing images: PRs can only read the
+  # build cache of their own branch and their base branch, so this gives every
+  # new PR into development a warm cache.
   push:
-    branches: [main]
+    branches: [main, development]
     paths:
       - "docker/**"
       - "src/perception/**"
