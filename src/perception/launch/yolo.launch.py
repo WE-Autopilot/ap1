@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
@@ -41,7 +42,9 @@ def _find_venv_site_packages() -> Path:
 
 
 def _yolo_node(context):
-    params = [{'device': LaunchConfiguration('device')}]
+    # Tuning defaults first, so the launch arguments below override them
+    config = Path(get_package_share_directory('ap1_perception')) / 'config' / 'yolo.yaml'
+    params = [str(config), {'device': LaunchConfiguration('device')}]
     # Forward model_path only when given, so the node's default (the model
     # installed with the package) applies otherwise
     model_path = LaunchConfiguration('model_path').perform(context)

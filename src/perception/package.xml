@@ -8,6 +8,8 @@
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
+  <!-- ParameterDescriptor and SetParametersResult for the node's parameters -->
+  <depend>rcl_interfaces</depend>
   <depend>ap1_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>geometry_msgs</depend>

@@ -15,6 +15,8 @@ setup(
             ['resource/' + package_name]),
         (os.path.join('share', package_name), ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*')),
+        # Node parameter files, loaded by the launch files
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         # Model files (Git LFS); the node finds them with yolo_node.default_yolo_model.
         # .dockerignore keeps .onnx out of the images, so this installs nothing
         # there and the deploy services pass model_path for the mounted copy.
