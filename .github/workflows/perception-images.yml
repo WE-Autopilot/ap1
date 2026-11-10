@@ -33,7 +33,11 @@ permissions:
 
 env:
   IMAGE: ghcr.io/we-autopilot/ap1/perception
-  YOLO_MODEL: src/perception/ap1_perception/yolo/yolo11n.onnx
+  # Models stay out of the images (.dockerignore) and are mounted from the
+  # checkout, as modules/docker-compose.yaml does.
+  MODELS_DIR: src/perception/models
+  # Glob: also covers yolo26n-seg.onnx from the segmentation follow-up
+  YOLO_MODEL: src/perception/models/yolo*.onnx
   PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
 
 jobs:
@@ -81,7 +85,7 @@ jobs:
       - name: Deploy tests
         run: |
           docker run --rm \
-            -v "$PWD/$YOLO_MODEL:/opt/ap1/models/yolo11n.onnx:ro" \
+            -v "$PWD/$MODELS_DIR:/opt/ap1/models:ro" \
             "$IMAGE:${{ matrix.variant }}" \
             pytest /opt/ap1/share/ap1_perception/test/deploy
 

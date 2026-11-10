@@ -29,9 +29,10 @@ it only has a CPU image (see [Control](#control)).
 2. GPU machines only (Linux and WSL): NVIDIA driver 580 or newer (needed for CUDA 13) and the
    [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
    then `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`.
-3. The YOLO model is mounted straight from `src/perception/ap1_perception/yolo/yolo11n.onnx`,
-   which is in Git LFS. If that file is a small text pointer instead of ~10 MB,
-   run `git lfs pull`.
+3. [Git LFS](https://git-lfs.com), then `git lfs pull` in the repo. Models live in
+   `src/perception/models/` (LFS) and the folder is mounted read-only at
+   `/opt/ap1/models`, so a model can be swapped without rebuilding. If
+   `yolo26n.onnx` is a small text pointer instead of ~10 MB, run `git lfs pull`.
 4. Create a `.env` file in the repo root (it's gitignored) with this content:
    ```bash
    # Required: the compose files, so commands need no -f flags
@@ -124,6 +125,11 @@ Try launching the YOLO node from the `ap1_perception` ROS package:
 ```bash
 ros2 launch ap1_perception yolo.launch.py
 ```
+
+In the dev container the node loads the model installed with the package from
+your mounted source, and logs the path at startup. Pass
+`model_path:=/path/to/model.onnx` to try another one; the deploy services pass
+the mounted `/opt/ap1/models/yolo26n.onnx`.
 
 The deploy image runs the YOLO node on its own.
 In another terminal, try:

@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import numpy as np
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
@@ -22,6 +25,15 @@ INFO_TOPIC = "camera/camera/aligned_depth_to_color/camera_info"
 
 #PUBLISH_TOPIC = "perception/entities"
 PUBLISH_TOPIC = "ap1/perception/entities"
+
+# The only place the YOLO model's file name appears. Model files live in
+# src/perception/models/ (Git LFS) and are installed to the package's share folder.
+YOLO_MODEL_FILE = "yolo26n.onnx"
+
+
+def default_yolo_model() -> str:
+    """Path to the YOLO model installed with the package: <ap1_perception share>/models."""
+    return str(Path(get_package_share_directory("ap1_perception")) / "models" / YOLO_MODEL_FILE)
 
 
 def normal_to_quaternion(normal: np.ndarray) -> tuple[float, float, float, float]:
@@ -72,11 +84,14 @@ class YoloNode(Node):
         self._bridge = CvBridge()
         self._K: np.ndarray | None = None
 
-        # Empty model_path falls back to the model bundled in the package.
-        model_path = self.declare_parameter('model_path', '').value
+        # Defaults to the model installed with the package, so full_system.launch.py
+        # can start this node without parameters.
+        model_path = self.declare_parameter('model_path', default_yolo_model()).value
         device = self.declare_parameter('device', 'auto').value
-        self._model = YOLO(model_path=model_path or None, device=device)
-        self.get_logger().info(f"YOLO loaded, running on {self._model.provider}.")
+        self._model = YOLO(model_path=model_path, device=device)
+        self.get_logger().info(
+            f"YOLO loaded from {model_path}, running on {self._model.provider}."
+        )
 
         self._pub = self.create_publisher(EntityStateArray, PUBLISH_TOPIC, 10)
 

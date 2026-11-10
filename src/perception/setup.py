@@ -15,13 +15,17 @@ setup(
             ['resource/' + package_name]),
         (os.path.join('share', package_name), ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*')),
+        # Model files (Git LFS); the node finds them with yolo_node.default_yolo_model.
+        # .dockerignore keeps .onnx out of the images, so this installs nothing
+        # there and the deploy services pass model_path for the mounted copy.
+        (os.path.join('share', package_name, 'models'), glob('models/*.onnx')),
         # Deploy tests ship with the package: pytest <prefix>/share/ap1_perception/test/deploy
         (os.path.join('share', package_name, 'test', 'deploy'),
             glob('test/deploy/*.py') + ['test/deploy/pytest.ini']),
     ],
     # include models inside package data
     package_data={
-        package_name: ['ufld/model.onnx', 'yolo/yolo11n.onnx', 'ufld/config.py'],
+        package_name: ['ufld/model.onnx', 'ufld/config.py'],
     },
     install_requires=['setuptools'],
     zip_safe=True,
