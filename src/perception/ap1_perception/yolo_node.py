@@ -1,5 +1,6 @@
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from geometry_msgs.msg import PoseArray, PoseStamped
@@ -172,10 +173,16 @@ class YoloNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = YoloNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node = None
+    try:
+        node = YoloNode()
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass  # Ctrl-C, or launch stopping the node: exit without a traceback
+    finally:
+        if node is not None:
+            node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

@@ -11,6 +11,8 @@
 //   docker/base.Dockerfile      base-<variant> (stage `base`), and the shared pipeline
 //                               that turns a module into <module>-<variant> (stage `deploy`)
 //                               and <module>-dev-<variant> (stage `develop`)
+//   docker/all.Dockerfile       merges every module's sources for the all-modules
+//                               images (all-deploy, all-dev-<variant>)
 
 variable "AP1_REGISTRY" {
   default = "ghcr.io/we-autopilot/ap1"
@@ -37,9 +39,14 @@ variable "VARIANTS" {
   ]
 }
 
+// One cache scope per image: perception-cpu, perception-gpu, control, all-gpu.
+// Only the image's own target exports it. mode=max includes every stage the
+// image was built from, so the base and module stages are stored once per
+// image instead of once per target (the repo's cache is capped at 10 GB).
+// Every target imports the scopes of the images built on it.
 function "cache_from" {
-  params = [scope]
-  result = CI ? ["type=gha,scope=${scope}"] : []
+  params = [scopes]
+  result = CI ? [for scope in scopes : "type=gha,scope=${scope}"] : []
 }
 
 function "cache_to" {
@@ -51,8 +58,8 @@ group "default" {
   targets = ["perception-cpu"]
 }
 
-# builds every deploy image in a single command, for testing
-group "all" {
+// Every per-module deploy image in one command, to check each module builds on its own
+group "modules" {
   targets = ["perception-cpu", "control"]
 }
 
@@ -71,8 +78,7 @@ target "base" {
     ROS_DISTRO    = ROS_DISTRO
   }
   tags       = ["${AP1_REGISTRY}/base:${ROS_DISTRO}-${v.name}"]
-  cache-from = cache_from("base-${v.name}")
-  cache-to   = cache_to("base-${v.name}")
+  cache-from = cache_from(v.name == "cpu" ? ["perception-cpu", "control"] : ["perception-gpu", "all-gpu"])
 }
 
 ######################### perception #########################
@@ -84,8 +90,7 @@ target "perception-source" {
   dockerfile = "docker/perception.Dockerfile"
   target     = "source"
   contexts   = { base = "target:base-${v.name}" }
-  cache-from = cache_from("perception-source-${v.name}")
-  cache-to   = cache_to("perception-source-${v.name}")
+  cache-from = cache_from(["perception-${v.name}", "all-${v.name}"])
 }
 
 target "perception-deps" {
@@ -95,8 +100,7 @@ target "perception-deps" {
   dockerfile = "docker/perception.Dockerfile"
   target     = "dependencies"
   contexts   = { base = "target:base-${v.name}" }
-  cache-from = cache_from("perception-deps-${v.name}")
-  cache-to   = cache_to("perception-deps-${v.name}")
+  cache-from = cache_from(["perception-${v.name}", "all-${v.name}"])
 }
 
 // Deploy image: what runs on the car / in integration tests
@@ -114,7 +118,7 @@ target "perception" {
     "${AP1_REGISTRY}/perception:${v.name}",
     notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/perception:${v.name}-${GIT_SHA}" : "",
   ])
-  cache-from = cache_from("perception-${v.name}")
+  cache-from = cache_from(["perception-${v.name}"])
   cache-to   = cache_to("perception-${v.name}")
 }
 
@@ -140,8 +144,7 @@ target "control-source" {
   dockerfile = "docker/control.Dockerfile"
   target     = "source"
   contexts   = { base = "target:base-cpu" }
-  cache-from = cache_from("control-source")
-  cache-to   = cache_to("control-source")
+  cache-from = cache_from(["control", "all-gpu"])
 }
 
 target "control-deps" {
@@ -149,8 +152,7 @@ target "control-deps" {
   dockerfile = "docker/control.Dockerfile"
   target     = "dependencies"
   contexts   = { base = "target:base-cpu" }
-  cache-from = cache_from("control-deps")
-  cache-to   = cache_to("control-deps")
+  cache-from = cache_from(["control"])
 }
 
 // Deploy image: what runs on the car / in integration tests
@@ -166,7 +168,7 @@ target "control" {
     "${AP1_REGISTRY}/control:cpu",
     notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/control:cpu-${GIT_SHA}" : "",
   ])
-  cache-from = cache_from("control")
+  cache-from = cache_from(["control"])
   cache-to   = cache_to("control")
 }
 
@@ -180,4 +182,69 @@ target "control-dev" {
     "module-deps"   = "target:control-deps"
   }
   tags = ["${AP1_REGISTRY}/control:cpu-dev"]
+}
+
+######################### all modules #########################
+// Every module in one image. all.Dockerfile merges the module source stages.
+// The module dependencies stages are stacked instead: each one is built with
+// the previous module's stage as its `base`.
+// Adding a module: a COPY line in all.Dockerfile, its source in all-source's
+// contexts, and one more step in the all-deps stack.
+// Both are matrixed so rosdep_scan resolves package.xml conditions with the
+// variant's AP1_GPU (onnxruntime vs onnxruntime-gpu).
+
+target "all-source" {
+  name       = "all-source-${v.name}"
+  matrix     = { v = VARIANTS }
+  context    = "."
+  dockerfile = "docker/all.Dockerfile"
+  target     = "source"
+  contexts = {
+    base                = "target:base-${v.name}"
+    "perception-source" = "target:perception-source-${v.name}"
+    // control has no variants: its source files are the same for both
+    "control-source" = "target:control-source"
+  }
+  cache-from = cache_from(["all-${v.name}"])
+}
+
+target "all-deps" {
+  name       = "all-deps-${v.name}"
+  matrix     = { v = VARIANTS }
+  context    = "."
+  dockerfile = "docker/control.Dockerfile"
+  target     = "dependencies"
+  contexts   = { base = "target:perception-deps-${v.name}" }
+  cache-from = cache_from(["all-${v.name}"])
+}
+
+// Deploy image: GPU only, like the car. Compose runs one container per module from it
+target "all-deploy" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "deploy"
+  contexts = {
+    "module-source" = "target:all-source-gpu"
+    "module-deps"   = "target:all-deps-gpu"
+  }
+  tags = compact([
+    "${AP1_REGISTRY}/all:gpu",
+    notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/all:gpu-${GIT_SHA}" : "",
+  ])
+  cache-from = cache_from(["all-gpu"])
+  cache-to   = cache_to("all-gpu")
+}
+
+// Dev image: every module's dependencies + dev tools; source is mounted and built at runtime
+target "all-dev" {
+  name       = "all-dev-${v.name}"
+  matrix     = { v = VARIANTS }
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "develop"
+  contexts = {
+    "module-source" = "target:all-source-${v.name}"
+    "module-deps"   = "target:all-deps-${v.name}"
+  }
+  tags = ["${AP1_REGISTRY}/all:${v.name}-dev"]
 }

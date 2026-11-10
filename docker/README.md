@@ -17,7 +17,7 @@ it only has a CPU image (see [Control](#control)).
 
 ## Setup
 
-1. Docker with Buildx and Compose.
+1. Docker with Buildx and Compose (2.24 or newer).
    - Arch: `sudo pacman -S docker docker-buildx docker-compose`
    - Ubuntu: [Docker's apt repo](https://docs.docker.com/engine/install/ubuntu/)
      (includes `docker-buildx-plugin` and `docker-compose-plugin`)
@@ -89,7 +89,7 @@ Docker Desktop runs containers in a Linux VM, on both Intel and Apple Silicon
 - Keep the repo under your home folder. Docker Desktop shares `/Users` with
   containers by default.
 - Host networking means the VM's network, not your Mac's. Containers reach each
-  other fine (dev container, smoke and end-to-end tests), but ROS discovery doesn't reach
+  other fine (dev containers, tests), but ROS discovery doesn't reach
   other machines, so `SUBNET` won't find the car or teammates. Use a Linux
   machine for that.
 
@@ -141,26 +141,39 @@ image. If an image isn't built locally, compose pulls it from the registry.
 
 ### Tests
 
-Both tests run in a second container from the deploy image, with
-`docker/tests` mounted in.
+Tests live in each package's `test/` folder and run with `colcon test`.
+`test/deploy/` holds the subset that also ships in the deploy image, to check
+the exact image that runs on the car:
 
-Smoke test (imports, cv_bridge, YOLO inference):
+- `test_perception_environment.py`: dependencies import and work together
+  (cv_bridge with apt's numpy, CUDA onnxruntime on GPU images), YOLO inference.
+- `test_yolo_node.py`: launches `yolo_node`, feeds it a stop-sign photo with
+  camera info and a point cloud over ROS, and checks the published entity. The
+  photo is downloaded to a temporary folder and deleted once loaded, so this
+  test needs internet.
+
+The other tests in `test/` are unit tests that only run in dev containers.
+
+The tests launch their own nodes in a ROS domain no other test run uses, so
+they never talk to running containers or to a teammate's nodes. They run on
+the GPU when the image is a GPU image and a GPU is visible, and on CPU otherwise.
+
+In a dev container, from `/ws` after `colcon build`:
 
 ```bash
-docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception-cpu \
-    python3 /tests/perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
+colcon test --packages-select ap1_perception
+colcon test-result --verbose
 ```
 
-End-to-end test: with the YOLO node running (`docker compose up -d perception-cpu`),
-it feeds the node a stop-sign photo (downloaded to a temp folder and deleted
-afterwards) with camera info and a point cloud over ROS, and checks the
-published entity. Run it with the same variant as the running node.
+Against a deploy image, through the deploy service so the model is mounted:
 
 ```bash
-docker compose run --rm --no-deps -v "$PWD/docker/tests:/tests:ro" perception-cpu \
-    python3 /tests/perception_e2e.py
-docker compose logs perception-cpu    # what the node logged during the test
+docker compose run --rm perception-cpu pytest /opt/ap1/share/ap1_perception/test/deploy
 ```
+
+Use `docker compose run`, not `exec`: `exec` skips the image's entrypoint, so ROS
+isn't sourced. The same commands work in the all-modules containers
+(`all-dev-cpu` and `all-dev-gpu`, `all-perception`).
 
 ### GPU
 
@@ -175,8 +188,7 @@ docker compose exec perception-dev-gpu bash
 
 The GPU image sets `AP1_GPU=1`, which makes `yolo.launch.py` default to
 `device:=cuda` (failing at startup if the GPU isn't usable, rather than silently
-running on CPU). `device:=auto` uses the GPU when available. The smoke test
-takes `--device cuda` the same way.
+running on CPU). `device:=auto` uses the GPU when available.
 
 ### Control
 
@@ -213,6 +225,38 @@ docker compose logs -f control
 
 It logs `Velocity is null or nan. Skipping update.` every 2 seconds until
 something publishes `/ap1/actuation/speed`. That's expected.
+
+### All modules
+
+The `all` images hold every Docker module (perception and control for now) in
+one image, built from the same commit with one shared `ap1_msgs`.
+
+For development, `all-dev-cpu` and `all-dev-gpu` are single containers with the
+sources of `src/msgs`, `src/perception` and `src/control` mounted at `/ws/src`.
+Build and run everything from one shell:
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load all-dev-cpu
+docker compose up -d all-dev-cpu
+docker compose exec all-dev-cpu bash
+```
+
+Inside, `colcon build` from `/ws` builds all three packages, then any `ros2`
+command works as in the module dev containers.
+
+For deployment, `all-deploy` is a GPU image (`ap1/all:gpu`), like the car. The
+`all-deploy` profile runs one container per module from it, `all-perception` and
+`all-control`, with the same commands and mounts as the module services. Each
+restarts and logs on its own:
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load all-deploy
+docker compose --profile all-deploy up -d
+docker compose logs -f all-perception
+```
+
+Don't run the `all-deploy` profile alongside the module deploy services
+(`perception-gpu`, `control`): every node would run twice.
 
 ### Settings
 
@@ -263,7 +307,7 @@ If a dependency differs between CPU and GPU, use a condition on `AP1_GPU`, like
 the onnxruntime entries in `package.xml`.
 
 Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
-(1.26). The constraints file blocks upgrades, and the smoke test checks it.
+(1.26). The constraints file blocks upgrades, and the deploy tests check it.
 
 ## Layout
 
@@ -279,10 +323,9 @@ docker/                       how images are built
                               rosdep scan -> install -> build -> deploy/develop
   perception.Dockerfile       perception's sources and extra dependencies
   control.Dockerfile          control's sources and extra dependencies
+  all.Dockerfile              merges every module's sources for the all-modules images
   docker-bake.hcl             build graph: variants x targets (used locally and by CI)
   config/                     entrypoint, shell env, pip version pins, pyproject mask
-  tests/perception_smoke.py   smoke test, run locally and by CI
-  tests/perception_e2e.py     end-to-end ROS test
 ```
 
 ## How the build works
@@ -314,7 +357,8 @@ stage, after the install.
 Dev build output lives in named volumes, one set per variant
 (`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
 so CPU and GPU dev containers never reuse a build compiled against the other
-image. Control has one set (`ap1_control-build` and so on).
+image. Control has one set (`ap1_control-build` and so on), and the all-modules
+dev containers one per variant (`ap1_all-build-cpu`, ...).
 `docker compose --profile '*' down` keeps them; delete them with
 `docker volume rm` to start clean.
 
@@ -325,18 +369,47 @@ BuildKit only builds the stages a target needs, so building `base-<variant>`
 (target `base`) never touches the module stages, and the module targets
 (`deploy`, `develop`) start from the module contexts instead of `base`.
 
+The all-modules images go through the same pipeline, with the module stages
+combined first:
+
+- `all-source-<variant>` (`all.Dockerfile`) copies every module's `source`
+  stage into one tree, so `rosdep_scan` and `build` see all packages.
+- `all-deps-<variant>` stacks the modules' `dependencies` stages: each module's
+  stage is built with the previous module's as its `base`. They can't be merged
+  with `COPY` like sources, since a `dependencies` stage can install packages.
+
+Both are built per variant, so `rosdep_scan` resolves the `AP1_GPU` conditions in
+`package.xml` for the right image.
+
 New modules add a `<module>.Dockerfile`, targets in `docker-bake.hcl`, and a
-service in each `modules/` compose file. They reuse `base.Dockerfile` as is.
+service in each `modules/` compose file. They reuse `base.Dockerfile` as is. To
+include a module in the all-modules images, also add a `COPY` line in
+`all.Dockerfile`, its `source` target to `all-source`'s contexts, a step to the
+`all-deps` stack, an `all-<module>` deploy service, and its source mount in the
+`all-dev-*` services.
 
 ## CI
 
-`.github/workflows/perception-images.yml` builds both variants on every PR
-that touches `docker/`, `src/perception/` or `src/msgs/`, and runs the smoke
-test in each.
-On `main` it pushes `ghcr.io/we-autopilot/ap1/perception:{cpu,gpu}` plus a
-per-commit tag. The runners have no GPU, so the GPU image's inference runs on
-CPU there. CI only checks that its onnxruntime has CUDA support.
-Control images aren't built in CI yet.
+Two workflows build the deploy images on every PR that touches their module,
+`docker/` or `src/msgs/`:
+
+- `.github/workflows/perception-images.yml` builds both perception variants
+  and runs the deploy tests in each. The runners have no GPU, so the GPU
+  image's inference runs on CPU there; CI only checks that its onnxruntime has
+  CUDA support.
+- `.github/workflows/control-images.yml` builds the control image and checks
+  that `control_node` starts with its installed config and stays up.
+
+On `main` they push `ghcr.io/we-autopilot/ap1/{perception,control}` images plus
+a per-commit tag. They also run on pushes to `development`, without pushing
+images, so PRs into `development` start from a warm build cache.
+
+The build cache lives in the GitHub Actions cache, one scope per image
+(`perception-cpu`, `perception-gpu`, `control`; see `cache_from` and `cache_to`
+in `docker-bake.hcl`). A PR can read its own cache and its base branch's. A
+build only reinstalls packages when a `package.xml` or `pip-constraints.txt`
+changes, as long as the rule in [How the build works](#how-the-build-works)
+holds. The all-modules images aren't built in CI.
 
 ## Not covered yet
 

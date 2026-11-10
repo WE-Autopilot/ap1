@@ -1,4 +1,4 @@
-# Builds the perception images (CPU and GPU), smoke-tests them, and on main
+# Builds the perception images (CPU and GPU), runs their deploy tests, and on main
 # pushes them to ghcr.io/we-autopilot/ap1/perception. See docker/README.md.
 name: Perception images
 
@@ -10,8 +10,11 @@ on:
       - ".dockerignore"
       - "src/msgs/**"
       - ".github/workflows/perception-images.yml"
+  # Builds on development too, without pushing images: PRs can only read the
+  # build cache of their own branch and their base branch, so this gives every
+  # new PR into development a warm cache.
   push:
-    branches: [main]
+    branches: [main, development]
     paths:
       - "docker/**"
       - "src/perception/**"
@@ -45,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Only the YOLO model is needed (for the smoke test). Caching the LFS object
+      # Only the YOLO model is needed (for the deploy tests). Caching the LFS object
       # avoids spending the org's LFS bandwidth on every run.
       - name: Restore YOLO model from cache
         uses: actions/cache@v6
@@ -74,14 +77,13 @@ jobs:
           load: true
 
       # Hosted runners have no GPU: the GPU image runs inference on CPU here, but
-      # the test still checks its onnxruntime has CUDA support.
-      - name: Smoke test
+      # the tests still check its onnxruntime has CUDA support.
+      - name: Deploy tests
         run: |
           docker run --rm \
             -v "$PWD/$YOLO_MODEL:/opt/ap1/models/yolo11n.onnx:ro" \
-            -v "$PWD/docker/tests:/tests:ro" \
             "$IMAGE:${{ matrix.variant }}" \
-            python3 /tests/perception_smoke.py --model /opt/ap1/models/yolo11n.onnx --device cpu
+            pytest /opt/ap1/share/ap1_perception/test/deploy
 
       - name: Log in to GHCR
         if: env.PUSH == 'true'
