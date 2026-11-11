@@ -14,7 +14,13 @@
   <depend>nav_msgs</depend>
   <depend>pcl_conversions</depend>
   <depend>pcl_ros</depend>
-
+  
+  <!-- Runtime: launch/lio_sam_carla.launch.py -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>lio_sam</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rviz2</exec_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
