@@ -10,7 +10,7 @@ CARLA drive ─record_bag.py─> raw bag ─filter_bag.py─> filtered bag ─ru
 
 1. Build the workspace with LIO-SAM ([SETUP.md](../../SETUP.md), "LIO-SAM (map building)"):
    ```bash
-   ./ap1_setup.sh && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+   ./ap1_setup.sh && colcon build
    ```
 2. Install the CARLA client and the recorder's packages:
    ```bash
@@ -46,7 +46,7 @@ Each run gets its own folder, `~/WEAP/maps/<date>_<time>_<map>/`:
 
 | File | What it is |
 |---|---|
-| `results/map/GlobalMap.pcd` | the map (0.2 m voxels). Open in CloudCompare. |
+| `results/map/GlobalMap.pcd` | the map (0.2 m voxels). Open in pclViewer or CloudCompare. |
 | `results/map/CornerMap.pcd`, `SurfMap.pcd` | LIO-SAM's edge and surface feature maps |
 | `results/lio_sam_optimized_trajectory.tum` | LIO-SAM's path after loop closure |
 | `results/lio_sam_trajectory.tum` | LIO-SAM's live odometry |
