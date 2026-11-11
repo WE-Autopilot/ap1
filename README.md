@@ -6,11 +6,11 @@ For setup see SETUP.md.
 
 ## Repo Structure
 
-Under `src` find dirs for:
-- bringup (launching ap1 in ROS2)
-- msgs (communication between subsystems)
-
-As well as for each subsystem:
-- perception
-- mapping_and_localization
-- planning_and_control
+- `src/bringup`: launch files for the full system
+- `src/msgs`: `ap1_msgs`, messages between subsystems
+- `src/perception`: Perception
+- `src/mapping`, `src/localization`: Mapping & Localization
+- `src/planning`, `src/control`: Planning & Control
+- `src/console`: operator console UI
+- `simulation/`: CARLA bag recording and sensor filtering (see `simulation/README.md`)
+- `scripts/`: helper scripts, including `map_carla.sh` (see `src/mapping/README.md`)
