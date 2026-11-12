@@ -36,12 +36,13 @@ services:
     image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/perception:cpu${AP1_TAG_SUFFIX:-}
     restart: unless-stopped
     volumes:
-      # The model is in Git LFS, so it's mounted straight from the checkout
-      - ../src/perception/ap1_perception/yolo/yolo11n.onnx:/opt/ap1/models/yolo11n.onnx:ro
+      # Models are in Git LFS and kept out of the images (.dockerignore), so the
+      # whole folder is mounted from the checkout: swapping a model needs no rebuild
+      - ../src/perception/models:/opt/ap1/models:ro
       - ../bags:/ws/bags
     command: >
       ros2 launch ap1_perception yolo.launch.py
-      model_path:=/opt/ap1/models/yolo11n.onnx
+      model_path:=/opt/ap1/models/yolo26n.onnx
 
   perception-gpu:
     <<: *perception
