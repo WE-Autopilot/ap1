@@ -7,16 +7,14 @@ from rcl_interfaces.msg import ParameterDescriptor, SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
-from geometry_msgs.msg import PoseArray, PoseStamped
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 from cv_bridge import CvBridge
 import sensor_msgs_py.point_cloud2 as pc2
-from ap1_msgs.msg import EntityStateArray, EntityState
+from vision_msgs.msg import Detection3D, Detection3DArray, ObjectHypothesisWithPose
+from ap1_msgs.msg import ObjectClass
 
 from .yolo import YOLO
-from .projection import pointcloud_to_pixel, check_box
-from .ransac import GroundRANSAC
-from .ransac._plane import Plane
+from .projection import box_geometry, cam_optical_to_base_link, check_box, pointcloud_to_pixel
 
 
 DEPTH_TOPIC = "camera/camera/aligned_depth_to_color/image_raw"
@@ -24,12 +22,25 @@ COLOR_TOPIC = "camera/camera/color/image_raw"
 PC_TOPIC = "/camera/camera/depth/color/points"
 INFO_TOPIC = "camera/camera/aligned_depth_to_color/camera_info"
 
-#PUBLISH_TOPIC = "perception/entities"
-PUBLISH_TOPIC = "ap1/perception/entities"
+# Perception object contract (issue #66): consumed by Mapping & Localization
+PUBLISH_TOPIC = "ap1/perception/objects"
+OUTPUT_FRAME = "base_link"
 
 # The only place the YOLO model's file name appears. Model files live in
 # src/perception/models/ (Git LFS) and are installed to the package's share folder.
 YOLO_MODEL_FILE = "yolo26n.onnx"
+
+# COCO class id -> ObjectClass constant. Ids not listed here map to UNKNOWN.
+COCO_TO_OBJECT_CLASS: dict[int, str] = {}
+
+# Orientation is always identity (the contract doesn't estimate heading), so its
+# variance marks it unknown. 1e6 matches the association node's convention (#90).
+ORIENTATION_VARIANCE = 1e6
+
+# Fixed for now, not ROS parameters: the association node (#90) replaces this
+# box-to-point code. Boxes with fewer cloud points have no reliable 3D position.
+MIN_BOX_POINTS = 3
+POSITION_STDDEV = 0.3  # m, 1 sigma, reported in each detection's covariance
 
 
 def default_yolo_model() -> str:
@@ -37,45 +48,20 @@ def default_yolo_model() -> str:
     return str(Path(get_package_share_directory("ap1_perception")) / "models" / YOLO_MODEL_FILE)
 
 
-def normal_to_quaternion(normal: np.ndarray) -> tuple[float, float, float, float]:
-    """Convert a unit normal vector to a quaternion with the z-axis aligned to the normal.
-
-    Returns (qx, qy, qz, qw).
-    """
-    normal = np.asarray(normal, dtype=float)
-    normal = normal / np.linalg.norm(normal)
-
-    z = np.array([0.0, 0.0, 1.0])
-    dot = np.dot(z, normal)
-
-    if dot > 1.0 - 1e-6:
-        return (0.0, 0.0, 0.0, 1.0)
-    if dot < -1.0 + 1e-6:
-        return (1.0, 0.0, 0.0, 0.0)
-
-    axis = np.cross(z, normal)
-    axis /= np.linalg.norm(axis)
-    angle = np.arccos(np.clip(dot, -1.0, 1.0))
-
-    s = np.sin(angle / 2.0)
-    return (axis[0] * s, axis[1] * s, axis[2] * s, np.cos(angle / 2.0))
+def object_class(coco_id: int) -> str:
+    """ObjectClass constant for a COCO class id."""
+    return COCO_TO_OBJECT_CLASS.get(int(coco_id), ObjectClass.UNKNOWN)
 
 
-def ransac_plane_normal(points: np.ndarray) -> np.ndarray:
-    """Fit a plane to 3D points using GroundRANSAC and return the unit normal.
+def pose_covariance() -> list[float]:
+    """Row-major 6x6 covariance: POSITION_STDDEV on x, y, z, unknown orientation."""
+    cov = np.zeros((6, 6))
+    cov[[0, 1, 2], [0, 1, 2]] = POSITION_STDDEV ** 2
+    cov[[3, 4, 5], [3, 4, 5]] = ORIENTATION_VARIANCE
+    return cov.ravel().tolist()
 
-    The normal is oriented to face the camera (negative z in camera frame).
-    """
-    centroid = np.median(points, axis=0)
-    # Initial estimate: plane at the centroid with normal pointing toward the camera.
-    initial = Plane([0.0, 0.0, -1.0], centroid)
-    ransac = GroundRANSAC(estimate=initial, max_retry=20, p_thresh=1, r_thresh=0.7, l_thresh=0.01)
-    plane = ransac(points)
 
-    normal = plane.normal
-    if normal[2] > 0:
-        normal = -normal
-    return normal
+COVARIANCE = pose_covariance()
 
 
 class YoloNode(Node):
@@ -107,7 +93,7 @@ class YoloNode(Node):
             f"(conf={self._model.conf}, classes={self._model.classes.tolist()})."
         )
 
-        self._pub = self.create_publisher(EntityStateArray, PUBLISH_TOPIC, 10)
+        self._pub = self.create_publisher(Detection3DArray, PUBLISH_TOPIC, 10)
 
         self.create_subscription(CameraInfo, INFO_TOPIC, self._camera_info_callback, 10)
 
@@ -148,75 +134,52 @@ class YoloNode(Node):
         if self._K is None:
             return
 
+        # Always publish, stamped with the source image: an empty array means
+        # nothing was detected in this frame.
+        out = Detection3DArray()
+        out.header.stamp = color_msg.header.stamp
+        out.header.frame_id = OUTPUT_FRAME
+
         # YOLO expects bgr encoding not rgb
         color = self._bridge.imgmsg_to_cv2(color_msg, desired_encoding='bgr8')
 
         # read_points_numpy returns a plain (N, 3) float array directly
         xyz = pc2.read_points_numpy(pc_msg, field_names=('x', 'y', 'z'), skip_nans=True).astype(np.float32)
 
-        if xyz.shape[0] == 0:
-            return
+        if xyz.shape[0] > 0:
+            boxes, scores, classes = self._model.forward(color)
+            pixel_coords = pointcloud_to_pixel(self._K, xyz)  # (N, 2)
+            for box, score, cls in zip(boxes, scores, classes):
+                box_xyz = xyz[check_box(pixel_coords, box)]
+                if len(box_xyz) < MIN_BOX_POINTS:
+                    continue  # too little depth in this box for a reliable 3D position
+                out.detections.append(self._detection(box, box_xyz, score, cls, out.header))
 
-        entity_array = EntityStateArray()
-        entity_array.header = color_msg.header
+        self._pub.publish(out)
 
-        boxes, _ = self._model.forward(color)
+    def _detection(self, box, box_xyz, score, cls, header) -> Detection3D:
+        """One Detection3D in base_link from a pixel box and the cloud points inside it."""
+        center_cam, size_cam = box_geometry(self._K, box, box_xyz)
+        center = cam_optical_to_base_link(center_cam[None])[0]
+        # Optical (width, height, depth) -> base_link (x forward, y left, z up)
+        size = (size_cam[2], size_cam[0], size_cam[1])
 
-        if boxes.shape[0] == 0:
-            self._pub.publish(entity_array)
-            return
+        det = Detection3D()
+        det.header = header
+        det.id = ''  # not tracked yet
+        det.bbox.center.position.x = float(center[0])
+        det.bbox.center.position.y = float(center[1])
+        det.bbox.center.position.z = float(center[2])
+        det.bbox.center.orientation.w = 1.0
+        det.bbox.size.x, det.bbox.size.y, det.bbox.size.z = (float(v) for v in size)
 
-        pixel_coords = pointcloud_to_pixel(self._K, xyz)  # (N, 2)
-
-        # aly edit
-        # changing this PoseArray to EntityStateArray
-        # == ENTITYSTATEARRAY START
-        for box in boxes:
-            mask = check_box(pixel_coords, box)
-            box_xyz = xyz[mask]
-            if len(box_xyz) < 3:
-                continue
-            centroid = np.median(box_xyz, axis=0)
-            normal = ransac_plane_normal(box_xyz)
-            qx, qy, qz, qw = normal_to_quaternion(normal)
-            # convert quaternion to yaw angle (gamma)
-            gamma = 2.0 * np.arctan2(qz, qw)
-            entity = EntityState()
-            entity.x     = float(centroid[0])
-            entity.y     = float(centroid[1])
-            entity.z     = float(centroid[2])
-            entity.gamma = float(gamma)
-            entity_array.entities.append(entity)
-        self._pub.publish(entity_array)
-        return
-        # == ENTITYSTATEARRAY END
-        # old code:
-        pose_array = PoseArray()
-        pose_array.header = color_msg.header
-
-        for box in boxes:
-            mask = check_box(pixel_coords, box)
-            box_xyz = xyz[mask]
-
-            if len(box_xyz) < 3:
-                continue
-
-            centroid = np.median(box_xyz, axis=0)
-            normal = ransac_plane_normal(box_xyz)
-            qx, qy, qz, qw = normal_to_quaternion(normal)
-
-            pose = PoseStamped().pose
-            pose.position.x = float(centroid[0])
-            pose.position.y = float(centroid[1])
-            pose.position.z = float(centroid[2])
-            pose.orientation.x = float(qx)
-            pose.orientation.y = float(qy)
-            pose.orientation.z = float(qz)
-            pose.orientation.w = float(qw)
-
-            pose_array.poses.append(pose)
-
-        self._pub.publish(pose_array)
+        hyp = ObjectHypothesisWithPose()
+        hyp.hypothesis.class_id = object_class(cls)
+        hyp.hypothesis.score = float(score)
+        hyp.pose.pose = det.bbox.center
+        hyp.pose.covariance = COVARIANCE
+        det.results.append(hyp)
+        return det
 
 
 def main(args=None):
