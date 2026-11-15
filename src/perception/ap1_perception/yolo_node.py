@@ -31,7 +31,9 @@ OUTPUT_FRAME = "base_link"
 YOLO_MODEL_FILE = "yolo26n.onnx"
 
 # COCO class id -> ObjectClass constant. Ids not listed here map to UNKNOWN.
-COCO_TO_OBJECT_CLASS: dict[int, str] = {}
+COCO_TO_OBJECT_CLASS = {
+    11: ObjectClass.SIGN_STOP,  # stop sign
+}
 
 # Orientation is always identity (the contract doesn't estimate heading), so its
 # variance marks it unknown. 1e6 matches the association node's convention (#90).
