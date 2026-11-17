@@ -109,15 +109,6 @@ def cam_optical_to_base_link(pts_cam: np.ndarray) -> np.ndarray:
 
 
 def box_geometry(K, box, box_xyz):
-    """Center and size of a detected object, both in the camera optical frame.
-
-    box is the detection's xyxy pixel box and box_xyz the (N, 3) cloud points
-    that project into it (N >= 1). The center is the points' median, which
-    ignores stray background points. The width and height come from the pixel
-    box scaled to the center's depth, since the cloud only covers the object's
-    visible face. The depth extent is the spread of the middle 80% of point
-    depths. Returns (center, size), each a (3,) array of x, y, z.
-    """
     center = np.median(box_xyz, axis=0)
     depth = center[2]
     width = (box[2] - box[0]) * depth / K[0, 0]

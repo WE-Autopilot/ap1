@@ -15,8 +15,8 @@
     # Min detection confidence, 0-1. YOLO26 is end-to-end, so this does the
     # real filtering: there is no NMS IoU threshold to tune.
     conf_threshold: 0.25
-    # COCO class ids to keep (11 = stop sign)
-    classes: [11]
+    # ObjectClass values to detect
+    classes: ["sign.stop"]
     # Image/point cloud synchronizer, applied at startup
     sync_queue_size: 5
     sync_slop: 0.05
