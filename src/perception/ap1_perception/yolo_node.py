@@ -26,18 +26,9 @@ INFO_TOPIC = "camera/camera/aligned_depth_to_color/camera_info"
 PUBLISH_TOPIC = "ap1/perception/objects"
 OUTPUT_FRAME = "base_link"
 
-# The only place the YOLO model's file name appears. Model files live in
-# src/perception/models/ (Git LFS) and are installed to the package's share folder.
 YOLO_MODEL_FILE = "yolo26n.onnx"
+MODEL_CLASSES = {11: ObjectClass.SIGN_STOP,}
 
-# Model output id -> ObjectClass. The only place model ids appear: retraining on
-# our own classes only changes this table. Unmapped model classes are dropped.
-MODEL_CLASSES = {
-    11: ObjectClass.SIGN_STOP,
-}
-
-# Orientation is always identity (the contract doesn't estimate heading), so its
-# variance marks it unknown. 1e6 matches the association node's convention (#90).
 ORIENTATION_VARIANCE = 1e6
 
 # Fixed for now, not ROS parameters: the association node (#90) replaces this
