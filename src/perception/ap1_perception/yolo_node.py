@@ -69,9 +69,10 @@ class YoloNode(Node):
         sync_queue_size = self._declare('sync_queue_size', 5, 'Image/point cloud sync queue length', True)
         sync_slop = self._declare('sync_slop', 0.05, 'Max image/point cloud stamp gap (s)', True)
 
-        # Tuning parameters: can also be changed live with `ros2 param set`.
+        # Tuning parameter: can also be changed live with `ros2 param set`.
         self._declare('conf_threshold', 0.25, 'Min detection confidence, 0-1')
 
+        # Detected classes are fixed by MODEL_CLASSES, not a parameter
         self._model = YOLO(model_path=model_path, classes=list(MODEL_CLASSES), device=device)
         self._apply_tuning()
         self.add_on_set_parameters_callback(self._validate_parameters)
