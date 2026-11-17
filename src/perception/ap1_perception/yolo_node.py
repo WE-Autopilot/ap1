@@ -30,12 +30,11 @@ OUTPUT_FRAME = "base_link"
 # src/perception/models/ (Git LFS) and are installed to the package's share folder.
 YOLO_MODEL_FILE = "yolo26n.onnx"
 
-# Our classes -> the model's output ids. The only place model ids appear: a
-# model trained on our own classes only changes the numbers here.
-MODEL_CLASS_IDS = {
-    ObjectClass.SIGN_STOP: 11,
+# Model output id -> ObjectClass. The only place model ids appear: retraining on
+# our own classes only changes this table. Unmapped model classes are dropped.
+MODEL_CLASSES = {
+    11: ObjectClass.SIGN_STOP,
 }
-CLASS_FROM_MODEL_ID = {model_id: name for name, model_id in MODEL_CLASS_IDS.items()}
 
 # Orientation is always identity (the contract doesn't estimate heading), so its
 # variance marks it unknown. 1e6 matches the association node's convention (#90).
@@ -81,15 +80,14 @@ class YoloNode(Node):
 
         # Tuning parameters: can also be changed live with `ros2 param set`.
         self._declare('conf_threshold', 0.25, 'Min detection confidence, 0-1')
-        self._declare('classes', [ObjectClass.SIGN_STOP], 'ObjectClass values to detect')
 
-        self._model = YOLO(model_path=model_path, device=device)
+        self._model = YOLO(model_path=model_path, classes=list(MODEL_CLASSES), device=device)
         self._apply_tuning()
         self.add_on_set_parameters_callback(self._validate_parameters)
         self.add_post_set_parameters_callback(lambda _params: self._apply_tuning())
         self.get_logger().info(
             f"YOLO loaded from {model_path}, running on {self._model.provider} "
-            f"(conf={self._model.conf}, classes={self.get_parameter('classes').value})."
+            f"(conf={self._model.conf}, classes={list(MODEL_CLASSES.values())})."
         )
 
         self._pub = self.create_publisher(Detection3DArray, PUBLISH_TOPIC, 10)
@@ -113,18 +111,11 @@ class YoloNode(Node):
         for p in params:
             if p.name == 'conf_threshold' and not 0.0 <= p.value <= 1.0:
                 return SetParametersResult(successful=False, reason='conf_threshold must be in [0, 1]')
-            if p.name == 'classes' and len(p.value) == 0:
-                return SetParametersResult(successful=False, reason='classes must not be empty')
-            if p.name == 'classes' and not set(p.value) <= MODEL_CLASS_IDS.keys():
-                return SetParametersResult(
-                    successful=False, reason=f'classes must be from {list(MODEL_CLASS_IDS)}')
         return SetParametersResult(successful=True)
 
     def _apply_tuning(self) -> None:
         """Copy the current tuning parameters onto the model."""
         self._model.conf = self.get_parameter('conf_threshold').value
-        self._model.classes = np.asarray(
-            [MODEL_CLASS_IDS[name] for name in self.get_parameter('classes').value])
 
     def _camera_info_callback(self, msg: CameraInfo) -> None:
         if self._K is not None:
@@ -177,7 +168,7 @@ class YoloNode(Node):
         det.bbox.size.x, det.bbox.size.y, det.bbox.size.z = (float(v) for v in size)
 
         hyp = ObjectHypothesisWithPose()
-        hyp.hypothesis.class_id = CLASS_FROM_MODEL_ID[int(cls)]
+        hyp.hypothesis.class_id = MODEL_CLASSES[int(cls)]
         hyp.hypothesis.score = float(score)
         hyp.pose.pose = det.bbox.center
         hyp.pose.covariance = COVARIANCE

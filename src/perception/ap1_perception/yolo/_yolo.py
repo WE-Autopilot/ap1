@@ -55,7 +55,7 @@ def select_providers(device: str) -> list[str]:
 
 
 class YOLO:
-    def __init__(self, model_path, classes=(11,), K=None, device="auto",
+    def __init__(self, model_path, classes=None, K=None, device="auto",
                  conf=0.25, iou=0.7, max_det=300):
         model_path = Path(model_path)
         if not model_path.is_file():
