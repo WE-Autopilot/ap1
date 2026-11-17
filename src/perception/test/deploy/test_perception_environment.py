@@ -47,6 +47,6 @@ def test_yolo_inference():
     detector = YOLO(model_path=MODEL_PATH, device=device)
     if device == 'cuda':
         assert detector.provider == 'CUDAExecutionProvider'
-    boxes, classes = detector.forward(np.zeros((480, 640, 3), dtype=np.uint8))
+    boxes, scores, classes = detector.forward(np.zeros((480, 640, 3), dtype=np.uint8))
     assert boxes.shape[1] == 4
-    assert len(boxes) == len(classes)
+    assert len(boxes) == len(scores) == len(classes)
