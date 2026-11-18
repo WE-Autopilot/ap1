@@ -135,8 +135,11 @@ FROM dependencies AS develop
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # install dev tools and enforce usage of ubuntu user 1000:1000
+# foxglove-bridge: view topics in the Foxglove app on your machine (ws://localhost:8765),
+# no X server needed (docker/README.md, Visualizing with Foxglove)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3-vcstool gdb less nano sudo tmux vim && \
+    apt-get install -y --no-install-recommends python3-vcstool gdb less nano sudo tmux vim \
+      "ros-${ROS_DISTRO}-foxglove-bridge" && \
     rm -rf /var/lib/apt/lists/* && \
     echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu && \
     chmod 0440 /etc/sudoers.d/ubuntu && \

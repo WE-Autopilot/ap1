@@ -2,7 +2,7 @@
 
 Containerized build and dev environment for AP1 modules, modelled on
 [WATonomous' wato_monorepo](https://github.com/WATonomous/wato_monorepo).
-Perception and control run on it. Other modules still use `ap1_setup.sh`.
+Perception, control and mapping & localization run on it. Other modules still use `ap1_setup.sh`.
 
 Perception images come in two variants built from the same files:
 
@@ -92,6 +92,13 @@ Docker Desktop runs containers in a Linux VM, on both Intel and Apple Silicon
   other fine (dev container, smoke and end-to-end tests), but ROS discovery doesn't reach
   other machines, so `SUBNET` won't find the car or teammates. Use a Linux
   machine for that.
+- To open a container's port from your Mac (Foxglove's `ws://localhost:8765`),
+  turn on Docker Desktop's host networking once: Settings > Resources >
+  Network > **Enable host networking** (Docker Desktop 4.34 or newer), then
+  Apply & restart. It forwards TCP and UDP ports only.
+- Give the VM enough memory for C++ builds: Settings > Resources, 12 GB or
+  more if your Mac has 16 GB+. LIO-SAM's build gets killed at ~8 GB (see
+  [Mapping & Localization](#mapping--localization)).
 
 ## Everyday use
 
@@ -214,6 +221,79 @@ docker compose logs -f control
 It logs `Velocity is null or nan. Skipping update.` every 2 seconds until
 something publishes `/ap1/actuation/speed`. That's expected.
 
+### Mapping & Localization
+
+CPU only, like control: `mapping` (deploy) and `mapping-dev`. The image holds
+`ap1_mapping`, `ap1_localization`, `ap1_msgs` and LIO-SAM with all their
+dependencies (GTSAM, PCL, rviz2, ...).
+
+LIO-SAM lives in `src/external/LIO-SAM`, which is gitignored and kept out of
+images by `.dockerignore`. The image build clones it at the commit pinned in
+`ap1.repos` and patches it for Jazzy with `docker/config/patch_lio_sam.sh`.
+The dev container mounts your checkout's copy instead, so import and patch it
+once on the host (the script uses perl, so it works on macOS too):
+
+```bash
+vcs import --skip-existing < ap1.repos       # or: git clone + checkout the commit in ap1.repos
+docker/config/patch_lio_sam.sh src/external/LIO-SAM
+```
+
+Build the image and start the container:
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load mapping-dev
+docker compose up -d mapping-dev
+docker compose exec mapping-dev bash
+```
+
+The dev container mounts `src/msgs`, `src/mapping`, `src/localization`,
+`src/external/LIO-SAM`, `scripts/` and `simulation/` at `/ws`, plus
+`$AP1_DATA_DIR/bags` and `$AP1_DATA_DIR/maps` (default `~/WEAP`) at
+`~/WEAP/bags` and `~/WEAP/maps`, which is where `scripts/map_carla.sh` reads
+and writes. Build from `/ws`. LIO-SAM takes 1-2 GB per compiler process, so
+limit parallel jobs unless the Docker VM has 12 GB+:
+
+```bash
+cd /ws
+MAKEFLAGS=-j2 colcon build --symlink-install --executor sequential
+source install/setup.bash
+```
+
+Map a CARLA bag you already recorded (CARLA isn't needed for this step):
+
+```bash
+scripts/map_carla.sh --bag ~/WEAP/bags/<name>_filtered
+```
+
+The map lands in `~/WEAP/maps/<run>/` on your machine. `lio_sam_carla.launch.py`
+starts rviz2 by default; there's no display in the container, so pass
+`rviz:=false` and use Foxglove (below) when launching by hand.
+
+Recording a new bag (`map_carla.sh --map ...`) needs the `carla` Python client,
+which only has x86_64 wheels, so it doesn't run in this image on Apple Silicon
+or the Jetson. Record on an x86_64 machine and copy the `_filtered` bag into
+`~/WEAP/bags`.
+
+### Visualizing with Foxglove
+
+Every dev image has `foxglove_bridge`, so you can look at topics from the
+[Foxglove app](https://foxglove.dev/download) on your machine without an X
+server. In a dev container:
+
+```bash
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml   # listens on port 8765
+```
+
+In Foxglove: Open connection > Foxglove WebSocket > `ws://localhost:8765`.
+Add a 3D panel for point clouds, TF and paths. When replaying a bag with
+`use_sim_time`, run the bridge on sim time too so TF lines up:
+
+```bash
+ros2 run foxglove_bridge foxglove_bridge --ros-args -p use_sim_time:=true
+```
+
+On macOS this needs Docker Desktop's host networking ([macOS](#macos)).
+
 ### Settings
 
 Compose reads these from your shell or from your `.env` file. Bake reads only
@@ -279,8 +359,10 @@ docker/                       how images are built
                               rosdep scan -> install -> build -> deploy/develop
   perception.Dockerfile       perception's sources and extra dependencies
   control.Dockerfile          control's sources and extra dependencies
+  mapping.Dockerfile          mapping & localization sources (+ LIO-SAM) and extra dependencies
   docker-bake.hcl             build graph: variants x targets (used locally and by CI)
-  config/                     entrypoint, shell env, pip version pins, pyproject mask
+  config/                     entrypoint, shell env, pip version pins, pyproject mask,
+                              patch_lio_sam.sh (LIO-SAM Jazzy patch, used by image and host)
   tests/perception_smoke.py   smoke test, run locally and by CI
   tests/perception_e2e.py     end-to-end ROS test
 ```
@@ -336,7 +418,7 @@ test in each.
 On `main` it pushes `ghcr.io/we-autopilot/ap1/perception:{cpu,gpu}` plus a
 per-commit tag. The runners have no GPU, so the GPU image's inference runs on
 CPU there. CI only checks that its onnxruntime has CUDA support.
-Control images aren't built in CI yet.
+Control and mapping images aren't built in CI yet.
 
 ## Not covered yet
 

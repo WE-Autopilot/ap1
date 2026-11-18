@@ -61,3 +61,16 @@ services:
     command: >
       ros2 run ap1_control control_node
       /opt/ap1/share/ap1_control/config/control_node_cfg.csv
+
+  #################### MAPPING & LOCALIZATION ####################
+  # CPU only, like control. Runs LIO-SAM on a bag for now; localization (NDT)
+  # replaces this command once ap1_localization has a launch file.
+  mapping: &mapping
+    <<: *ros
+    profiles: [mapping]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/mapping:cpu${AP1_TAG_SUFFIX:-}
+    restart: unless-stopped
+    volumes:
+      - ../bags:/ws/bags
+    command: >
+      ros2 launch ap1_mapping lio_sam_carla.launch.py rviz:=false

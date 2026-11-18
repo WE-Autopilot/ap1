@@ -57,6 +57,32 @@ services:
       - control-log:/ws/log
     command: sleep infinity
 
+  #################### MAPPING & LOCALIZATION ####################
+  # LIO-SAM is mounted from src/external/LIO-SAM: import and patch it once on
+  # the host (docker/README.md, Mapping & Localization).
+  # scripts/ and simulation/ are mounted so scripts/map_carla.sh runs from /ws,
+  # and bags/maps go to AP1_DATA_DIR (default ~/WEAP), where map_carla.sh expects them.
+  mapping-dev:
+    extends:
+      file: docker-compose.yaml
+      service: mapping
+    profiles: [mapping-dev]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/mapping:cpu-dev
+    restart: "no"
+    volumes:
+      - ../src/msgs:/ws/src/msgs
+      - ../src/mapping:/ws/src/mapping
+      - ../src/localization:/ws/src/localization
+      - ../src/external/LIO-SAM:/ws/src/external/LIO-SAM
+      - ../scripts:/ws/scripts
+      - ../simulation:/ws/simulation
+      - ${AP1_DATA_DIR:-~/WEAP}/bags:/home/ubuntu/WEAP/bags
+      - ${AP1_DATA_DIR:-~/WEAP}/maps:/home/ubuntu/WEAP/maps
+      - mapping-build:/ws/build
+      - mapping-install:/ws/install
+      - mapping-log:/ws/log
+    command: sleep infinity
+
 # One set per variant: a build tree compiled against the CPU image must not be
 # reused in the GPU one, and the other way round
 volumes:
@@ -69,3 +95,6 @@ volumes:
   control-build:
   control-install:
   control-log:
+  mapping-build:
+  mapping-install:
+  mapping-log:

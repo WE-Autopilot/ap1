@@ -53,7 +53,7 @@ group "default" {
 
 # builds every deploy image in a single command, for testing
 group "all" {
-  targets = ["perception-cpu", "control"]
+  targets = ["perception-cpu", "control", "mapping"]
 }
 
 ############################ base ############################
@@ -180,4 +180,55 @@ target "control-dev" {
     "module-deps"   = "target:control-deps"
   }
   tags = ["${AP1_REGISTRY}/control:cpu-dev"]
+}
+
+######################### mapping #########################
+// Mapping & Localization: ap1_mapping, ap1_localization and LIO-SAM.
+// CPU only like control (LIO-SAM, PCL and NDT don't use the GPU), so no matrix.
+
+target "mapping-source" {
+  context    = "."
+  dockerfile = "docker/mapping.Dockerfile"
+  target     = "source"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from("mapping-source")
+  cache-to   = cache_to("mapping-source")
+}
+
+target "mapping-deps" {
+  context    = "."
+  dockerfile = "docker/mapping.Dockerfile"
+  target     = "dependencies"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from("mapping-deps")
+  cache-to   = cache_to("mapping-deps")
+}
+
+// Deploy image: what runs on the car / in integration tests
+target "mapping" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "deploy"
+  contexts = {
+    "module-source" = "target:mapping-source"
+    "module-deps"   = "target:mapping-deps"
+  }
+  tags = compact([
+    "${AP1_REGISTRY}/mapping:cpu",
+    notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/mapping:cpu-${GIT_SHA}" : "",
+  ])
+  cache-from = cache_from("mapping")
+  cache-to   = cache_to("mapping")
+}
+
+// Dev image: dependencies + dev tools; source is mounted and built at runtime
+target "mapping-dev" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "develop"
+  contexts = {
+    "module-source" = "target:mapping-source"
+    "module-deps"   = "target:mapping-deps"
+  }
+  tags = ["${AP1_REGISTRY}/mapping:cpu-dev"]
 }
