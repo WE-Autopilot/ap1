@@ -52,6 +52,8 @@ install(DIRECTORY config
 if(BUILD_TESTING)
   # disable linting for now bc uncrustify style checks conflict with my clang configs
   # use the clang-format file to format your code 
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_planning_dummy test/test_planning_dummy.cpp)
 endif()
 
 ament_package()
