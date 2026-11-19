@@ -2,7 +2,7 @@
 
 Containerized build and dev environment for AP1 modules, modelled on
 [WATonomous' wato_monorepo](https://github.com/WATonomous/wato_monorepo).
-Perception and control run on it. Other modules still use `ap1_setup.sh`.
+Perception, control, and planning run on it. Other modules still use `ap1_setup.sh`.
 
 Perception images come in two variants built from the same files:
 
@@ -29,20 +29,21 @@ it only has a CPU image (see [Control](#control)).
 2. GPU machines only (Linux and WSL): NVIDIA driver 580 or newer (needed for CUDA 13) and the
    [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
    then `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`.
-3. [Git LFS](https://git-lfs.com), then `git lfs pull` in the repo. Models live in
+3. For perception, install [Git LFS](https://git-lfs.com), then `git lfs pull` in the repo. Models live in
    `src/perception/models/` (LFS) and the folder is mounted read-only at
    `/opt/ap1/models`, so a model can be swapped without rebuilding. If
    `yolo26n.onnx` is a small text pointer instead of ~10 MB, run `git lfs pull`.
-4. Create a `.env` file in the repo root (it's gitignored) with this content:
-   ```bash
-   # Required: the compose files, so commands need no -f flags
-   COMPOSE_FILE=modules/docker-compose.yaml:modules/docker-compose.dev.yaml
+4. From the repo root, copy the Compose settings template if you do not have
+   a local `.env` yet:
 
-   # Optional, see Settings
-   # ROS_DOMAIN_ID=0
-   # ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+   ```bash
+   test -f .env || cp .env.example .env
    ```
-   Run `docker compose` from the repo root, since that's the only place it reads `.env` from.
+
+   An existing `.env` should contain
+   `COMPOSE_FILE=modules/docker-compose.yaml:modules/docker-compose.dev.yaml`.
+   Run Compose commands from the repo root. Run ROS and colcon commands from
+   the container shell. The template lists optional image and ROS settings.
 
 ### Windows (WSL 2)
 
@@ -200,20 +201,24 @@ running on CPU). `device:=auto` uses the GPU when available.
 
 Control is CPU only, so its targets and services have no `-cpu`/`-gpu` suffix:
 `control` (deploy) and `control-dev`. The dev container mounts `src/msgs` and
-`src/control`:
+`src/control`, builds both with colcon on startup, and runs `control_node` with
+the CSV from the checkout. Build output and node logs appear in the terminal:
 
 ```bash
 docker buildx bake -f docker/docker-bake.hcl --load control-dev
-docker compose up -d control-dev
-docker compose exec control-dev bash
+docker compose up control-dev
 ```
 
-Inside, build from `/ws` and run the node. `ros2 run` takes the package name
-(`ap1_control`) and the executable name (`control_node`), then the path to the
-config CSV:
+Press Ctrl+C to stop the attached service. To keep it running in the background,
+use `docker compose up -d control-dev` and follow output with
+`docker compose logs -f control-dev`. To open a ROS shell while the node runs,
+use `docker compose exec control-dev bash`.
+
+For a ROS shell without starting the node, use
+`docker compose run --rm -T=false control-dev bash -i`. From `/ws` you can
+build and start it manually:
 
 ```bash
-cd /ws
 colcon build --symlink-install
 source install/setup.bash
 ros2 run ap1_control control_node /ws/src/control/config/control_node_cfg.csv
@@ -232,13 +237,57 @@ docker compose logs -f control
 It logs `Velocity is null or nan. Skipping update.` every 2 seconds until
 something publishes `/ap1/actuation/speed`. That's expected.
 
+### Planning
+
+Planning is CPU only. The `planning` deploy service runs the installed
+`ap1_planning/planner_node`. It passes `stop_sign_transitions.yaml` as the first
+argument to configure the state machine and loads `planner.yaml` as ROS
+parameters for the topic names and debug setting. The command sets the ROS
+node name to `ap1_planning` to match the parameter file.
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load planning
+docker compose up -d planning
+docker compose logs -f planning
+```
+
+Both config files are installed under `/opt/ap1/share/ap1_planning/config`.
+Rebuild the deploy image after editing either file.
+
+For development, `planning-dev` mounts `src/msgs` and `src/planning` and
+keeps colcon output in named volumes.
+
+```bash
+docker buildx bake -f docker/docker-bake.hcl --load planning-dev
+docker compose up -d planning-dev
+docker compose exec planning-dev bash
+```
+
+Inside the container, build and launch the planner:
+
+```bash
+cd /ws
+colcon build --symlink-install
+source install/setup.bash
+ros2 run ap1_planning planner_node /ws/src/planning/config/stop_sign_transitions.yaml --ros-args -r __node:=ap1_planning --params-file /ws/src/planning/config/planner.yaml
+```
+
+Look for `Path Planner Node initialized.` In another terminal, open a second
+shell with `docker compose exec planning-dev bash` and run
+`ros2 node info /ap1_planning` to see the node's publishers and subscriptions.
+Press Ctrl+C in the first shell to stop the planner, then exit and run
+`docker compose stop planning-dev` from the host.
+
+Stop a module's deploy container before starting its dev node. For example,
+`docker compose stop control planning` stops both deploy nodes before dev testing.
+
 ### All modules
 
-The `all` images hold every Docker module (perception and control for now) in
+The `all` images hold every Docker module (perception, control, and planning) in
 one image, built from the same commit with one shared `ap1_msgs`.
 
 For development, `all-dev-cpu` and `all-dev-gpu` are single containers with the
-sources of `src/msgs`, `src/perception` and `src/control` mounted at `/ws/src`.
+sources of `src/msgs`, `src/perception`, `src/control`, and `src/planning` mounted at `/ws/src`.
 Build and run everything from one shell:
 
 ```bash
@@ -247,12 +296,12 @@ docker compose up -d all-dev-cpu
 docker compose exec all-dev-cpu bash
 ```
 
-Inside, `colcon build` from `/ws` builds all three packages, then any `ros2`
+Inside, `colcon build` from `/ws` builds all four packages, then any `ros2`
 command works as in the module dev containers.
 
 For deployment, `all-deploy` is a GPU image (`ap1/all:gpu`), like the car. The
-`all-deploy` profile runs one container per module from it, `all-perception` and
-`all-control`, with the same commands and mounts as the module services. Each
+`all-deploy` profile runs one container per module from it, `all-perception`,
+`all-control`, and `all-planning`, with the same commands and mounts as the module services. Each
 restarts and logs on its own:
 
 ```bash
@@ -262,7 +311,7 @@ docker compose logs -f all-perception
 ```
 
 Don't run the `all-deploy` profile alongside the module deploy services
-(`perception-gpu`, `control`): every node would run twice.
+(`perception-gpu`, `control`, `planning`): every node would run twice.
 
 ### Settings
 
@@ -318,17 +367,18 @@ Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
 ## Layout
 
 ```
-.env                          yours, not tracked: points docker compose at modules/ (Setup step 4)
+.env.example                  template for local Compose settings (Setup step 4)
 .dockerignore                 keeps bags and build output out of images
 bags/                         recordings, mounted at /ws/bags (contents gitignored)
-modules/                      how modules run (CPU and GPU services per module, CPU only for control)
+modules/                      how modules run (CPU and GPU services per module, CPU only for control and planning)
   docker-compose.yaml         deploy services: mounts, networking, launch commands
-  docker-compose.dev.yaml     dev services: extend deploy, mount source, idle
+  docker-compose.dev.yaml     dev services: extend deploy and mount source
 docker/                       how images are built
   base.Dockerfile             ROS Jazzy base, plus the shared pipeline:
                               rosdep scan -> install -> build -> deploy/develop
   perception.Dockerfile       perception's sources and extra dependencies
   control.Dockerfile          control's sources and extra dependencies
+  planning.Dockerfile         planning's sources and extra dependencies
   all.Dockerfile              merges every module's sources for the all-modules images
   docker-bake.hcl             build graph: variants x targets (used locally and by CI)
   config/                     entrypoint, shell env, pip version pins, pyproject mask
@@ -363,7 +413,7 @@ stage, after the install.
 Dev build output lives in named volumes, one set per variant
 (`ap1_perception-build-cpu`, `...-gpu`, and the same for `install` and `log`),
 so CPU and GPU dev containers never reuse a build compiled against the other
-image. Control has one set (`ap1_control-build` and so on), and the all-modules
+image. Control and planning each have one set (e.g. `ap1_planning-build`), and the all-modules
 dev containers one per variant (`ap1_all-build-cpu`, ...).
 `docker compose --profile '*' down` keeps them; delete them with
 `docker volume rm` to start clean.
@@ -396,7 +446,7 @@ include a module in the all-modules images, also add a `COPY` line in
 
 ## CI
 
-Two workflows build the deploy images on every PR that touches their module,
+Three workflows build the deploy images on every PR that touches their module,
 `docker/` or `src/msgs/`:
 
 - `.github/workflows/perception-images.yml` builds both perception variants
@@ -405,14 +455,16 @@ Two workflows build the deploy images on every PR that touches their module,
   CUDA support.
 - `.github/workflows/control-images.yml` builds the control image and checks
   that `control_node` starts with its installed config and stays up.
+- `.github/workflows/planning-images.yml` builds the planning image and checks
+  that `planner_node` starts with both installed YAML files and stays up.
 
-On `main` they push `ghcr.io/we-autopilot/ap1/{perception,control}` images plus
+On `main` they push `ghcr.io/we-autopilot/ap1/{perception,control,planning}` images plus
 a per-commit tag. They also run on pushes to `development`, without pushing
 images, so PRs into `development` start from a warm build cache.
 
 The build cache lives in the GitHub Actions cache, one scope per image
-(`perception-cpu`, `perception-gpu`, `control`; see `cache_from` and `cache_to`
-in `docker-bake.hcl`). A PR can read its own cache and its base branch's. A
+(`perception-cpu`, `perception-gpu`, `control`, `planning`. See `cache_from` and `cache_to`
+in `docker-bake.hcl`. A PR can read its own cache and its base branch's. A
 build only reinstalls packages when a `package.xml` or `pip-constraints.txt`
 changes, as long as the rule in [How the build works](#how-the-build-works)
 holds. The all-modules images aren't built in CI.

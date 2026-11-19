@@ -5,7 +5,7 @@ This is WE Autopilot's master workspace for development of the self-driving car 
 ## Setup
 
 - **Native (all subsystems):** see [SETUP.md](SETUP.md).
-- **Docker (perception and control for now):** see [docker/README.md](docker/README.md). Images are built with `docker buildx bake` and run with `docker compose`.
+- **Docker (perception, control, and planning):** see [docker/README.md](docker/README.md). Images are built with `docker buildx bake` and run with `docker compose`.
 
 ## Repo Structure
 
