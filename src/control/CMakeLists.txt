@@ -58,6 +58,9 @@ install(DIRECTORY config
 
 if(BUILD_TESTING)
   # no auto linting for now
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_smoke test/test_smoke.cpp)
+  ament_add_gtest(test_control_dummy test/test_control_dummy.cpp)
 endif()
 
 ament_package()
