@@ -1,0 +1,22 @@
+# yolo_node tuning values, loaded by launch/yolo.launch.py.
+#
+# Change a value here and relaunch: no code change and no live `ros2 param set`
+# needed. conf_threshold and classes can still be changed on a running node
+# with `ros2 param set`; the sync settings are read-only after startup.
+#
+# `/**` applies these to the node under whatever name it's launched with
+# (yolo.launch.py uses yolo_node, full_system.launch.py uses ap1_yolo).
+#
+# model_path and device are deliberately not here: the launch file picks device
+# from AP1_GPU, and model_path defaults to the model installed with the package
+# (the deploy services override it with the mounted /opt/ap1/models path).
+/**:
+  ros__parameters:
+    # Min detection confidence, 0-1. YOLO26 is end-to-end, so this does the
+    # real filtering: there is no NMS IoU threshold to tune.
+    conf_threshold: 0.25
+    # COCO class ids to keep (11 = stop sign)
+    classes: [11]
+    # Image/point cloud synchronizer, applied at startup
+    sync_queue_size: 5
+    sync_slop: 0.05

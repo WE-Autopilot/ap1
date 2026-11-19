@@ -2,15 +2,27 @@
 
 This is WE Autopilot's master workspace for development of the self-driving car system called AP1.
 
-For setup see SETUP.md.
+## Setup
+
+- **Native (all subsystems):** see [SETUP.md](SETUP.md).
+- **Docker (perception and control for now):** see [docker/README.md](docker/README.md). Images are built with `docker buildx bake` and run with `docker compose`.
 
 ## Repo Structure
 
-- `src/bringup`: launch files for the full system
-- `src/msgs`: `ap1_msgs`, messages between subsystems
-- `src/perception`: Perception
-- `src/mapping`, `src/localization`: Mapping & Localization
-- `src/planning`, `src/control`: Planning & Control
-- `src/console`: operator console UI
-- `simulation/`: CARLA bag recording and sensor filtering (see `simulation/README.md`)
-- `scripts/`: helper scripts, including `map_carla.sh` (see `src/mapping/README.md`)
+```text
+ap1_setup.sh       Native setup script (see SETUP.md)
+ap1.repos          External repos imported with vcs (src/msgs, src/external/)
+docker/            Dockerfiles, bake file, and their configs
+modules/           Docker Compose files: how module containers run
+scripts/           Smoke tests and utilities (see scripts/README.md)
+src/
+  bringup/         ap1_bringup: launch files for the full system
+  msgs/            ap1_msgs: messages between subsystems (imported from ap1.repos)
+  perception/      ap1_perception
+  mapping/         ap1_mapping       (Mapping & Localization)
+  localization/    ap1_localization  (Mapping & Localization)
+  planning/        ap1_planning      (Planning & Control)
+  control/         ap1_control       (Planning & Control)
+  console/         ap1_console: operator console UI
+  external/        Third-party dependencies (imported from ap1.repos, gitignored)
+```
