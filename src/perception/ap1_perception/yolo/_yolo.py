@@ -13,19 +13,14 @@ the model's output shape:
 Pre- and post-processing mirror ultralytics' predict defaults, so detections
 match what `ultralytics.YOLO(model).predict(img)` returns.
 
-The same code runs on CPU and GPU. Which one is used depends on the installed
-onnxruntime package (onnxruntime vs onnxruntime-gpu) and the `device` argument.
+The same code runs on CPU and GPU: see ap1_perception.runtime for how the
+`device` argument picks the onnxruntime execution provider.
 """
-from pathlib import Path
-
 import cv2
 import numpy as np
-import onnxruntime as ort
 
 from ..projection import box_select_points
-
-CPU_PROVIDER = "CPUExecutionProvider"
-CUDA_PROVIDER = "CUDAExecutionProvider"
+from ..runtime import create_session
 
 # Ultralytics predict defaults
 _IMGSZ = 640
@@ -34,46 +29,11 @@ _PAD_VALUE = 114
 _MAX_NMS = 30000
 _MAX_WH = 7680  # per-class box offset that makes NMS class-aware
 
-_LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
-
-
-def select_providers(device: str) -> list[str]:
-    """Map a device name ("auto", "cuda", "cpu") to ONNX Runtime providers."""
-    available = ort.get_available_providers()
-    if device == "cpu":
-        return [CPU_PROVIDER]
-    if device == "cuda":
-        if CUDA_PROVIDER not in available:
-            raise RuntimeError(
-                f"device='cuda' requested but onnxruntime has no CUDA support "
-                f"(available providers: {available}). Use the GPU image, or device='cpu'."
-            )
-        return [CUDA_PROVIDER, CPU_PROVIDER]
-    if device == "auto":
-        return [CUDA_PROVIDER, CPU_PROVIDER] if CUDA_PROVIDER in available else [CPU_PROVIDER]
-    raise ValueError(f"Unknown device '{device}', expected 'auto', 'cuda' or 'cpu'")
-
 
 class YOLO:
     def __init__(self, model_path, classes=(11,), K=None, device="auto",
                  conf=0.25, iou=0.7, max_det=300):
-        model_path = Path(model_path)
-        if not model_path.is_file():
-            raise FileNotFoundError(f"YOLO model not found at '{model_path}'")
-        with open(model_path, "rb") as f:
-            if f.read(len(_LFS_POINTER)) == _LFS_POINTER:
-                raise RuntimeError(
-                    f"'{model_path}' is a Git LFS pointer, not the model. "
-                    f"Run 'git lfs pull' in the repo, then rebuild."
-                )
-
-        self.session = ort.InferenceSession(str(model_path), providers=select_providers(device))
-        # onnxruntime silently falls back to CPU if CUDA libraries fail to load
-        if device == "cuda" and CUDA_PROVIDER not in self.session.get_providers():
-            raise RuntimeError(
-                "device='cuda' requested but the CUDA provider failed to load "
-                "(check the onnxruntime log above for the missing library)."
-            )
+        self.session = create_session(model_path, device)
 
         model_input = self.session.get_inputs()[0]
         self.input_name = model_input.name

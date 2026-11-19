@@ -90,7 +90,7 @@ class YoloNode(Node):
         # full_system.launch.py can start this node without parameters.
         model_path = self._declare('model_path', default_yolo_model(),
                                    'YOLO .onnx model; defaults to the one installed with the package', True)
-        device = self._declare('device', 'auto', "'auto', 'cuda' or 'cpu'", True)
+        device = self._declare('device', 'auto', "'auto', 'tensorrt', 'cuda' or 'cpu'", True)
         sync_queue_size = self._declare('sync_queue_size', 5, 'Image/point cloud sync queue length', True)
         sync_slop = self._declare('sync_slop', 0.05, 'Max image/point cloud stamp gap (s)', True)
 

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from ap1_perception.yolo import _yolo
-from ap1_perception.yolo._yolo import CPU_PROVIDER, CUDA_PROVIDER, YOLO
+from ap1_perception.yolo._yolo import YOLO
 
 
 def bare_yolo(dynamic=False, classes=None, conf=0.25, iou=0.7, max_det=300):
@@ -15,43 +15,6 @@ def bare_yolo(dynamic=False, classes=None, conf=0.25, iou=0.7, max_det=300):
     yolo.iou = iou
     yolo.max_det = max_det
     return yolo
-
-
-# onnxruntime's real providers depend on the image (CPU or GPU), so fake them
-@pytest.fixture
-def cuda_available(monkeypatch):
-    monkeypatch.setattr(_yolo.ort, 'get_available_providers', lambda: [CUDA_PROVIDER, CPU_PROVIDER])
-
-
-@pytest.fixture
-def cuda_missing(monkeypatch):
-    monkeypatch.setattr(_yolo.ort, 'get_available_providers', lambda: [CPU_PROVIDER])
-
-
-def test_cpu_never_uses_cuda(cuda_available):
-    assert _yolo.select_providers('cpu') == [CPU_PROVIDER]
-
-
-def test_cuda_with_cuda(cuda_available):
-    assert _yolo.select_providers('cuda') == [CUDA_PROVIDER, CPU_PROVIDER]
-
-
-def test_cuda_without_cuda_fails(cuda_missing):
-    with pytest.raises(RuntimeError):
-        _yolo.select_providers('cuda')
-
-
-def test_auto_prefers_cuda(cuda_available):
-    assert _yolo.select_providers('auto') == [CUDA_PROVIDER, CPU_PROVIDER]
-
-
-def test_auto_falls_back_to_cpu(cuda_missing):
-    assert _yolo.select_providers('auto') == [CPU_PROVIDER]
-
-
-def test_unknown_device_fails():
-    with pytest.raises(ValueError):
-        _yolo.select_providers('tpu')
 
 
 def test_greedy_nms_drops_overlap_keeps_disjoint():
