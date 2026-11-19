@@ -95,6 +95,8 @@ Docker Desktop runs containers in a Linux VM, on both Intel and Apple Silicon
   other machines, so `SUBNET` won't find the car or teammates. Use a Linux
   machine for that.
 
+For local ROS visualization with OrbStack or Docker Desktop, see [Foxglove on macOS](../docs/foxglove.md#macos).
+
 ## Everyday use
 
 Images are built with `docker buildx bake` and run with `docker compose` from
@@ -222,6 +224,8 @@ Deploy services load their parameter files from
 `/opt/ap1/share/<package>/config/` inside the image. Rebuild the corresponding
 image after editing its YAML. Both nodes log when initialized. They report
 missing inputs while upstream ROS topics are idle.
+
+To inspect their live ROS graph, see the [Foxglove guide](../docs/foxglove.md).
 
 Both dev services start idle, mount their module and shared message sources,
 and keep colcon output in named volumes. Start the containers from the repo
