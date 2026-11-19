@@ -7,4 +7,4 @@
 FROM base AS source
 COPY --from=perception-source ${AP1_WS}/src ${AP1_WS}/src
 COPY --from=control-source ${AP1_WS}/src ${AP1_WS}/src
-COPY --from=planning-source ${AP1_WS}/src/planning ${AP1_WS}/src/planning
+COPY --from=planning-source ${AP1_WS}/src ${AP1_WS}/src

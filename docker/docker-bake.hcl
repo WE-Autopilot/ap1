@@ -5,7 +5,7 @@
 //   docker buildx bake -f docker/docker-bake.hcl --load perception-cpu
 //   docker buildx bake -f docker/docker-bake.hcl --print perception-gpu   # show resolved config
 //
-// Two Dockerfiles, chained through named contexts:
+// Dockerfiles are connected through named contexts:
 //   docker/<module>.Dockerfile  module sources and extra deps
 //                               (<module>-source-<variant>, <module>-deps-<variant>)
 //   docker/base.Dockerfile      base-<variant> (stage `base`), and the shared pipeline
@@ -39,8 +39,7 @@ variable "VARIANTS" {
   ]
 }
 
-// One cache scope per image: perception-cpu, perception-gpu, control, planning, all-gpu.
-// Only the image's own target exports it. mode=max includes every stage the
+// Each image target exports its own cache scope. mode=max includes every stage the
 // image was built from, so the base and module stages are stored once per
 // image instead of once per target (the repo's cache is capped at 10 GB).
 // Every target imports the scopes of the images built on it.
@@ -137,7 +136,7 @@ target "perception-dev" {
 }
 
 ######################### control #########################
-// CPU only: control has no GPU dependencies, so no matrix
+// CPU only.
 
 target "control-source" {
   context    = "."
@@ -185,7 +184,7 @@ target "control-dev" {
 }
 
 ######################### planning #########################
-// CPU only: planning has no GPU dependencies, so no matrix
+// CPU only.
 
 target "planning-source" {
   context    = "."
@@ -250,7 +249,7 @@ target "all-source" {
   contexts = {
     base                = "target:base-${v.name}"
     "perception-source" = "target:perception-source-${v.name}"
-    // Control and planning source files are the same for both variants
+    // CPU-only source targets can be reused across hardware variants.
     "control-source"  = "target:control-source"
     "planning-source" = "target:planning-source"
   }

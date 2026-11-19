@@ -2,7 +2,7 @@
 #                  Dependencies from the <module>.Dockerfile file(s) that base is paired with are handled by rosdep 
 #                  and pip respectively.
 #
-# We define 6 build stages:
+# Shared build stages:
 #   base          ROS 2 and AP1 tooling on top of any Ubuntu 24.04 image
 #   rosdep_scan   resolve a <module>.Dockerfile's package.xml into apt and pip package lists
 #   dependencies  install those lists (cached until the lists change)
