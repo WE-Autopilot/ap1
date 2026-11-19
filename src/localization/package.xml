@@ -21,6 +21,11 @@
   <depend>ap1_msgs</depend>
   <depend>vision_msgs</depend>
 
+  <!-- Autoware nodes we launch (not linked). apt: ros-jazzy-autoware-ndt-scan-matcher,
+       ros-jazzy-autoware-map-loader; rosdep installs them. -->
+  <exec_depend>autoware_ndt_scan_matcher</exec_depend>
+  <exec_depend>autoware_map_loader</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
