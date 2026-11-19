@@ -44,6 +44,7 @@ setup(
         'console_scripts': [
             'yolo_node = ap1_perception.yolo_node:main',
             'ufld_ground_node = ap1_perception.ufld_ground_node:main',
+            'road_seg_node = ap1_perception.road_seg_node:main',
         ],
     },
 )

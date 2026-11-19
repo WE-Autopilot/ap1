@@ -1,0 +1,19 @@
+# road_seg_node settings, loaded by launch/road_seg.launch.py.
+#
+# All of these are read at startup: change a value here and relaunch, no rebuild needed.
+#
+# `/**` applies these to the node under whatever name it's launched with.
+#
+# model_path and device are deliberately not here: the launch file picks device
+# from AP1_GPU, and model_path defaults to the model installed with the package
+# (the deploy services override it with the mounted /opt/ap1/models path).
+/**:
+  ros__parameters:
+    # RealSense colour stream, as recorded in the team rosbags
+    image_topic: camera/camera/color/image_raw
+    camera_info_topic: camera/camera/color/camera_info
+    # Max segmentation rate (Hz). Frames arriving sooner than this are skipped, so the
+    # 20 Hz camera is segmented at 10 Hz; a slower camera gets every frame.
+    rate_hz: 10.0
+    # CPU threads onnxruntime uses per inference. More isn't faster on a busy machine.
+    threads: 4
