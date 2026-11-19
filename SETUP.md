@@ -185,6 +185,34 @@ The map loader needs a real `.pcd` (e.g. a LIO-SAM `GlobalMap.pcd`). Its param f
 
 How they connect: NDT gets its map from the loader over a service, not a topic. Its client `pcd_loader_service` (`autoware_map_msgs/srv/GetDifferentialPointCloudMap`) must be remapped to the loader's `service/get_differential_pcd_map`. The loader's latched `/map/pointcloud_map` topic is for RViz only. NDT also starts deactivated and ignores scans until its `trigger_node_srv` (`std_srvs/SetBool`) is called with `true`.
 
+#### Load the localization map
+
+The map `.pcd` isn't in git (too big). Point the launch at any `.pcd`, e.g. one from `scripts/map_carla.sh`:
+
+```bash
+ros2 launch ap1_localization map_loader.launch.py pointcloud_map:=<run>/results/map/GlobalMap.pcd
+```
+
+There's no shared team map yet. Once there is, it goes at the default path `~/WEAP/maps/ap1_map/pointcloud_map.pcd` and the launch needs no arguments.
+
+This starts Autoware's point cloud map loader and map projection loader (projector `Local`, from `src/localization/config/map_projector_info.yaml`). Everything is in the `map` frame:
+
+| Name | What it is |
+|---|---|
+| `/map/pointcloud_map` | whole map, latched; for Foxglove/RViz only |
+| `/map/get_differential_pointcloud_map` | service NDT gets its map from |
+| `/map/get_partial_pointcloud_map` | service, map cells within a radius (handy for testing) |
+| `/map/map_projector_info` | projector type, latched |
+
+Check it:
+
+```bash
+ros2 service call /map/get_partial_pointcloud_map autoware_map_msgs/srv/GetPartialPointCloudMap \
+  "{area: {center_x: 0.0, center_y: 0.0, radius: 50.0}}" | grep -E "cell_id|width"
+```
+
+A `cell_id` and a non-zero `width` mean it returned points. In Foxglove, start the bridge with `-p send_buffer_limit:=200000000` (the default 10 MB drops the map), set the display frame to `map` and show `/map/pointcloud_map`.
+
 ### Console UI only
 ```bash
 ros2 run ap1_console console
