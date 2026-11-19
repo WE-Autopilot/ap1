@@ -223,37 +223,39 @@ Deploy services load their parameter files from
 image after editing its YAML. Both nodes log when initialized. They report
 missing inputs while upstream ROS topics are idle.
 
-Both dev services mount their module and shared message sources, keep colcon
-output in named volumes, and automatically build and start the node with the
-parameter file from the checkout. Stop any running deploy instances for those
-modules before starting the dev services:
+Both dev services start idle, mount their module and shared message sources,
+and keep colcon output in named volumes. Start the containers from the repo
+root:
 
 ```bash
-docker compose stop control planning
 docker buildx bake -f docker/docker-bake.hcl --load control-dev planning-dev
-docker compose up control-dev planning-dev
+docker compose up -d control-dev planning-dev
 ```
 
-Press Ctrl+C to stop the attached services. Use `docker compose up -d` with the
-same service names to run them in the background, then use
-`docker compose logs -f control-dev planning-dev` to follow output.
-
-| ROS shell | Control | Planning |
-|---|---|---|
-| While the node runs | `docker compose exec control-dev bash` | `docker compose exec planning-dev bash` |
-| Shell only | `docker compose run --rm -T=false control-dev bash -i` | `docker compose run --rm -T=false planning-dev bash -i` |
-
-If the standalone shell detaches, use `docker compose run --rm -T SERVICE printenv ROS_DISTRO`
-to verify the environment. Replace `SERVICE` with the dev service name.
-
-To build manually in either ROS shell, run `colcon build --symlink-install`
-from `/ws` and source `install/setup.bash`. If the node is stopped, start it
-with the corresponding command:
+Open a ROS shell with `docker compose exec control-dev bash` or
+`docker compose exec planning-dev bash`. Build and source the workspace in
+each shell:
 
 ```bash
+cd /ws
+colcon build --symlink-install
+source install/setup.bash
+```
+
+Before starting a dev node, stop any running deploy instance for that module
+from the host. Run the corresponding command in the dev shell to start the
+node and see its logs there:
+
+```bash
+# In control-dev
 ros2 run ap1_control control_node --ros-args --params-file /ws/src/control/config/control.yaml
+
+# In planning-dev
 ros2 run ap1_planning planner_node --ros-args --params-file /ws/src/planning/config/planner.yaml
 ```
+
+Press Ctrl+C to stop the foreground node. From the host, use
+`docker compose stop control-dev planning-dev` to stop the dev containers.
 
 ### All modules
 

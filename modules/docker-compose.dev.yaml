@@ -59,14 +59,7 @@ services:
       - control-build:/ws/build
       - control-install:/ws/install
       - control-log:/ws/log
-    command:
-      - bash
-      - -c
-      - |
-        colcon build --symlink-install &&
-        source /ws/install/setup.bash &&
-        exec ros2 run ap1_control control_node \
-          --ros-args --params-file /ws/src/control/config/control.yaml
+    command: sleep infinity
 
   #################### PLANNING ####################
   planning-dev:
@@ -82,14 +75,7 @@ services:
       - planning-build:/ws/build
       - planning-install:/ws/install
       - planning-log:/ws/log
-    command:
-      - bash
-      - -c
-      - |
-        colcon build --symlink-install &&
-        source /ws/install/setup.bash &&
-        exec ros2 run ap1_planning planner_node \
-          --ros-args --params-file /ws/src/planning/config/planner.yaml
+    command: sleep infinity
 
   #################### ALL MODULES ####################
   # One container with every module's source. Extends perception's service for
