@@ -44,7 +44,7 @@ class PlannerNode : public rclcpp::Node
      *
      * @param rate_hz Primary loop update frequency.
      */
-    PlannerNode(double rate_hz, std::string transitions_path);
+    explicit PlannerNode(double rate_hz = 60);
   private:
     const double rate_hz_;
     bool debug_;

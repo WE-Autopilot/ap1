@@ -10,3 +10,9 @@ ap1_planning:
       target_path:   /ap1/planning/target_path
       speed_profile: /ap1/planning/speed_profile
       target_speed:  /ap1/control/target_speed
+    # Ordered rules in the form "<from> <event> <to>".
+    transitions:
+      - "Driving SignDetected Stopping"
+      - "Stopping HasStopped Stopped"
+      - "Stopped StopTimeElapsed DrivingThrough"
+      - "DrivingThrough DriveThruDistanceCovered Driving"

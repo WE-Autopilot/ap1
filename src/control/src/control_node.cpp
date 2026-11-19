@@ -100,9 +100,15 @@ void ControlNode::control_loop_callback()
     brake_pub_->publish(brake_msg);
 }
 
-ControlNode::ControlNode(const std::string& cfg_path, float rate_hz)
-    : Node("control_node"), rate_hz_(rate_hz), controller_(new PDController()),
-      ackermann_controller_(AckermannController(AckermannController::load_config(cfg_path)))
+ControlNode::ControlNode(double rate_hz)
+    : Node("ap1_control"), rate_hz_(rate_hz), controller_(new PDController()),
+      ackermann_controller_(AckermannController::Config{
+          declare_parameter<double>("wheelbase"),
+          declare_parameter<double>("a_max"),
+          declare_parameter<double>("delta_max"),
+          declare_parameter<double>("throttle_gain"),
+          declare_parameter<double>("brake_gain"),
+      })
 {
     // Subs
     speed_profile_sub_ = this->create_subscription<SpeedProfileStamped>(

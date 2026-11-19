@@ -1,0 +1,77 @@
+# Builds the planning image (CPU only), smoke-tests it, and on main pushes it to
+# ghcr.io/we-autopilot/ap1/planning. See docker/README.md.
+name: Planning images
+
+on:
+  pull_request:
+    paths:
+      - "docker/**"
+      - "src/planning/**"
+      - ".dockerignore"
+      - "src/msgs/**"
+      - ".github/workflows/planning-images.yml"
+  # Builds on development too, without pushing images: PRs can only read the
+  # build cache of their own branch and their base branch, so this gives every
+  # new PR into development a warm cache.
+  push:
+    branches: [main, development]
+    paths:
+      - "docker/**"
+      - "src/planning/**"
+      - ".dockerignore"
+      - "src/msgs/**"
+      - ".github/workflows/planning-images.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/we-autopilot/ap1/planning
+  PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: planning (cpu)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/bake-action@v7
+        env:
+          GIT_SHA: ${{ github.sha }}
+        with:
+          source: .
+          files: docker/docker-bake.hcl
+          targets: planning
+          load: true
+
+      # Check that the node stays up for 10 seconds with its installed ROS parameters.
+      # timeout returns 124 if the node was still running at the deadline.
+      - name: Smoke test
+        run: |
+          docker run --rm "$IMAGE:cpu" bash -c '
+            timeout 10 ros2 run ap1_planning planner_node \
+              --ros-args --params-file /opt/ap1/share/ap1_planning/config/planner.yaml
+            test $? -eq 124'
+
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: env.PUSH == 'true'
+        run: docker push --all-tags "$IMAGE"

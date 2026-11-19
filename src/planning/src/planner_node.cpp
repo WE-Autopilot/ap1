@@ -34,9 +34,11 @@ using ap1_msgs::msg::TargetPathStamped;
 
 namespace ap1::planning
 {
-PlannerNode::PlannerNode(double rate_hz, std::string transitions_path)
-    : Node("planner_node"), rate_hz_(rate_hz),
-      fsm(this->now(), fsm::VehicleState::Driving, transitions_path), event_generator()
+PlannerNode::PlannerNode(double rate_hz)
+    : Node("ap1_planning"), rate_hz_(rate_hz),
+      fsm(this->now(), fsm::VehicleState::Driving,
+          fsm::parse_transitions(declare_parameter<std::vector<std::string>>("transitions"))),
+      event_generator()
 {
     // Read and validate DEBUG once at startup.
     this->debug_ = this->declare_parameter<bool>("DEBUG");

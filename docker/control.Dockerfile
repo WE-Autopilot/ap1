@@ -1,5 +1,5 @@
-# Control module. Copies over source code built by colcon and relevant to control.
-# Also present as an intermediary for dependency management in build stages.
+# Provide module sources and a stage for extra dependencies.
+
 
 ########################## source ##########################
 FROM base AS source

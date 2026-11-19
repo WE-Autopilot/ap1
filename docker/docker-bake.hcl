@@ -5,7 +5,7 @@
 //   docker buildx bake -f docker/docker-bake.hcl --load perception-cpu
 //   docker buildx bake -f docker/docker-bake.hcl --print perception-gpu   # show resolved config
 //
-// Two Dockerfiles, chained through named contexts:
+// Dockerfiles are connected through named contexts:
 //   docker/<module>.Dockerfile  module sources and extra deps
 //                               (<module>-source-<variant>, <module>-deps-<variant>)
 //   docker/base.Dockerfile      base-<variant> (stage `base`), and the shared pipeline
@@ -39,8 +39,7 @@ variable "VARIANTS" {
   ]
 }
 
-// One cache scope per image: perception-cpu, perception-gpu, control, all-gpu.
-// Only the image's own target exports it. mode=max includes every stage the
+// Each image target exports its own cache scope. mode=max includes every stage the
 // image was built from, so the base and module stages are stored once per
 // image instead of once per target (the repo's cache is capped at 10 GB).
 // Every target imports the scopes of the images built on it.
@@ -60,7 +59,7 @@ group "default" {
 
 // Every per-module deploy image in one command, to check each module builds on its own
 group "modules" {
-  targets = ["perception-cpu", "control"]
+  targets = ["perception-cpu", "control", "planning"]
 }
 
 ############################ base ############################
@@ -78,7 +77,7 @@ target "base" {
     ROS_DISTRO    = ROS_DISTRO
   }
   tags       = ["${AP1_REGISTRY}/base:${ROS_DISTRO}-${v.name}"]
-  cache-from = cache_from(v.name == "cpu" ? ["perception-cpu", "control"] : ["perception-gpu", "all-gpu"])
+  cache-from = cache_from(v.name == "cpu" ? ["perception-cpu", "control", "planning"] : ["perception-gpu", "all-gpu"])
 }
 
 ######################### perception #########################
@@ -137,7 +136,7 @@ target "perception-dev" {
 }
 
 ######################### control #########################
-// CPU only: control has no GPU dependencies, so no matrix
+// CPU only.
 
 target "control-source" {
   context    = "."
@@ -184,6 +183,54 @@ target "control-dev" {
   tags = ["${AP1_REGISTRY}/control:cpu-dev"]
 }
 
+######################### planning #########################
+// CPU only.
+
+target "planning-source" {
+  context    = "."
+  dockerfile = "docker/planning.Dockerfile"
+  target     = "source"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from(["planning", "all-gpu"])
+}
+
+target "planning-deps" {
+  context    = "."
+  dockerfile = "docker/planning.Dockerfile"
+  target     = "dependencies"
+  contexts   = { base = "target:base-cpu" }
+  cache-from = cache_from(["planning"])
+}
+
+// Deploy image: what runs on the car / in integration tests
+target "planning" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "deploy"
+  contexts = {
+    "module-source" = "target:planning-source"
+    "module-deps"   = "target:planning-deps"
+  }
+  tags = compact([
+    "${AP1_REGISTRY}/planning:cpu",
+    notequal(GIT_SHA, "") ? "${AP1_REGISTRY}/planning:cpu-${GIT_SHA}" : "",
+  ])
+  cache-from = cache_from(["planning"])
+  cache-to   = cache_to("planning")
+}
+
+// Dev image: dependencies + dev tools; source is mounted and built at runtime
+target "planning-dev" {
+  context    = "."
+  dockerfile = "docker/base.Dockerfile"
+  target     = "develop"
+  contexts = {
+    "module-source" = "target:planning-source"
+    "module-deps"   = "target:planning-deps"
+  }
+  tags = ["${AP1_REGISTRY}/planning:cpu-dev"]
+}
+
 ######################### all modules #########################
 // Every module in one image. all.Dockerfile merges the module source stages.
 // The module dependencies stages are stacked instead: each one is built with
@@ -202,9 +249,20 @@ target "all-source" {
   contexts = {
     base                = "target:base-${v.name}"
     "perception-source" = "target:perception-source-${v.name}"
-    // control has no variants: its source files are the same for both
-    "control-source" = "target:control-source"
+    // CPU-only source targets can be reused across hardware variants.
+    "control-source"  = "target:control-source"
+    "planning-source" = "target:planning-source"
   }
+  cache-from = cache_from(["all-${v.name}"])
+}
+
+target "all-control-deps" {
+  name       = "all-control-deps-${v.name}"
+  matrix     = { v = VARIANTS }
+  context    = "."
+  dockerfile = "docker/control.Dockerfile"
+  target     = "dependencies"
+  contexts   = { base = "target:perception-deps-${v.name}" }
   cache-from = cache_from(["all-${v.name}"])
 }
 
@@ -212,9 +270,9 @@ target "all-deps" {
   name       = "all-deps-${v.name}"
   matrix     = { v = VARIANTS }
   context    = "."
-  dockerfile = "docker/control.Dockerfile"
+  dockerfile = "docker/planning.Dockerfile"
   target     = "dependencies"
-  contexts   = { base = "target:perception-deps-${v.name}" }
+  contexts   = { base = "target:all-control-deps-${v.name}" }
   cache-from = cache_from(["all-${v.name}"])
 }
 

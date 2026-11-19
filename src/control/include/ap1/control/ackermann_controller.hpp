@@ -8,7 +8,6 @@
 #ifndef AP1_ACKERMANN_CONTROLLER_HPP
 #define AP1_ACKERMANN_CONTROLLER_HPP
 
-#include <string>
 #include "vectors.hpp"
 
 namespace ap1::control
@@ -35,8 +34,6 @@ class AckermannController
     };
 
     Command compute_command(const vec3f& acc, const vec3f& vel);
-
-    static Config load_config(const std::string &path);
 
   private:
     Config cfg_;

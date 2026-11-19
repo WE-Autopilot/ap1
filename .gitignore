@@ -30,3 +30,5 @@ __pycache__/
 
 # Per-user docker compose settings (see docker/README.md, Setup)
 /.env
+/.env.*
+!/.env.example
