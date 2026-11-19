@@ -68,6 +68,22 @@ services:
         source /ws/install/setup.bash &&
         exec ros2 run ap1_control control_node /ws/src/control/config/control_node_cfg.csv
 
+  #################### PLANNING ####################
+  planning-dev:
+    extends:
+      file: docker-compose.yaml
+      service: planning
+    profiles: !override [planning-dev]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/planning:cpu-dev
+    restart: "no"
+    volumes:
+      - ../src/msgs:/ws/src/msgs
+      - ../src/planning:/ws/src/planning
+      - planning-build:/ws/build
+      - planning-install:/ws/install
+      - planning-log:/ws/log
+    command: sleep infinity
+
   #################### ALL MODULES ####################
   # One container with every module's source. Extends perception's service for
   # the ROS settings and the model and bags mounts.
@@ -82,6 +98,7 @@ services:
       - ../src/msgs:/ws/src/msgs
       - ../src/perception:/ws/src/perception
       - ../src/control:/ws/src/control
+      - ../src/planning:/ws/src/planning
       - ../docker/config/pyproject-mask.toml:/ws/src/perception/pyproject.toml:ro
       - all-build-cpu:/ws/build
       - all-install-cpu:/ws/install
@@ -99,6 +116,7 @@ services:
       - ../src/msgs:/ws/src/msgs
       - ../src/perception:/ws/src/perception
       - ../src/control:/ws/src/control
+      - ../src/planning:/ws/src/planning
       - ../docker/config/pyproject-mask.toml:/ws/src/perception/pyproject.toml:ro
       - all-build-gpu:/ws/build
       - all-install-gpu:/ws/install
@@ -117,6 +135,9 @@ volumes:
   control-build:
   control-install:
   control-log:
+  planning-build:
+  planning-install:
+  planning-log:
   all-build-cpu:
   all-install-cpu:
   all-log-cpu:

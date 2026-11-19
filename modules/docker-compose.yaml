@@ -1,6 +1,6 @@
 # AP1 module services: how each module runs on the car and in integration tests.
 # Service names match the targets in docker/docker-bake.hcl (e.g. perception-cpu,
-# perception-gpu). Each user creates a root .env file that sets COMPOSE_FILE
+# perception-gpu). Copy the root .env.example to .env to set COMPOSE_FILE
 # (docker/README.md, Setup), so you can run from the repo root without -f flags:
 #   docker compose up -d perception-cpu
 # See docker/README.md for the everyday commands.
@@ -63,6 +63,19 @@ services:
       ros2 run ap1_control control_node
       /opt/ap1/share/ap1_control/config/control_node_cfg.csv
 
+  #################### PLANNING ####################
+  planning:
+    <<: *ros
+    profiles: [planning]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/planning:cpu${AP1_TAG_SUFFIX:-}
+    restart: unless-stopped
+    # Match planner.yaml's node name so ROS applies its parameters.
+    command: >
+      ros2 run ap1_planning planner_node
+      /opt/ap1/share/ap1_planning/config/stop_sign_transitions.yaml
+      --ros-args -r __node:=ap1_planning
+      --params-file /opt/ap1/share/ap1_planning/config/planner.yaml
+
   #################### ALL MODULES ####################
   # Every module from one image (all-deploy in docker-bake.hcl), one container
   # per module, so each restarts and logs on its own while sharing one build of
@@ -78,5 +91,11 @@ services:
   all-control:
     extends:
       service: control
+    profiles: !override [all-deploy]
+    image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/all:gpu${AP1_TAG_SUFFIX:-}
+
+  all-planning:
+    extends:
+      service: planning
     profiles: !override [all-deploy]
     image: ${AP1_REGISTRY:-ghcr.io/we-autopilot/ap1}/all:gpu${AP1_TAG_SUFFIX:-}
