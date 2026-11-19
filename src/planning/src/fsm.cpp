@@ -1,10 +1,8 @@
 
-#include <filesystem>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include <yaml-cpp/yaml.h>
 
 #include "ap1/planning/fsm.hpp"
 #include "ap1/planning/state_context.hpp"
@@ -16,14 +14,8 @@ using ap1::planning::fsm::VehicleState;
 
 using namespace ap1::planning;
 
-// Helper funcs
-VehicleState state_from_string(const std::string& s);
-Event event_from_string(const std::string& s);
-
-// Beef and potatoes
-fsm::FSM::FSM(rclcpp::Time now, VehicleState default_state, std::string transitions_path)
-    : context(now), current_state(default_state),
-      transitions(load_transitions_from_file(transitions_path))
+fsm::FSM::FSM(rclcpp::Time now, VehicleState default_state, std::vector<Transition> transitions)
+    : context(now), current_state(default_state), transitions(std::move(transitions))
 {
 }
 
@@ -83,63 +75,32 @@ void fsm::on_state_change(const VehicleState from, const VehicleState to, const 
     }
 }
 
-std::vector<Transition> fsm::load_transitions_from_file(std::string path)
+std::vector<Transition> fsm::parse_transitions(const std::vector<std::string>& entries)
 {
-    // 1. Check extension
-    std::filesystem::path fs_path(path);
-    if (fs_path.extension() != ".yaml")
+    if (entries.empty())
     {
-        throw std::runtime_error("Invalid file extension. Expected .yaml");
+        throw std::runtime_error("The transitions parameter must contain at least one transition");
     }
 
-    // Load that bomboclaat file
-    YAML::Node root;
-    try
-    {
-        root = YAML::LoadFile(path);
-    }
-    catch (const std::exception& e)
-    {
-        throw std::runtime_error(std::string("Failed to load YAML file: ") + e.what());
-    }
-
-    // Make sure we have a root
-    if (!root["transitions"])
-    {
-        throw std::runtime_error("Missing 'transitions' in config.");
-    }
-
-    // Build transitions vector
     std::vector<Transition> transitions;
-
-    for (const auto& node : root["transitions"])
+    for (const auto& entry : entries)
     {
-        if (!node.IsMap())
+        std::istringstream fields(entry);
+        std::string from_name, event_name, to_name, extra;
+        if (!(fields >> from_name >> event_name >> to_name) || (fields >> extra))
         {
-            throw std::runtime_error("Each transition must be a map");
+            throw std::runtime_error("Expected '<from> <event> <to>' in transition: " + entry);
         }
 
-        if (!node["from"] || !node["event"] || !node["to"])
+        const auto from = to_state(from_name);
+        const auto event = to_event(event_name);
+        const auto to = to_state(to_name);
+        if (!from || !event || !to)
         {
-            throw std::runtime_error(
-                "Transntion is missing fields. Must have 'from', 'event', to'");
+            throw std::runtime_error("Unknown state or event in transition: " + entry);
         }
 
-        std::string from_str = node["from"].as<std::string>();
-        std::string event_str = node["event"].as<std::string>();
-        std::string to_str = node["to"].as<std::string>();
-
-        // validate against enum options
-        VehicleState from = to_state(from_str).value();
-        Event event = to_event(event_str).value();
-        VehicleState to = to_state(to_str).value();
-
-        transitions.push_back({from, event, to});
-    }
-
-    if (transitions.empty())
-    {
-        throw std::runtime_error("No transitions defined in file");
+        transitions.push_back({*from, *event, *to});
     }
 
     return transitions;

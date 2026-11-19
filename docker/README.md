@@ -2,7 +2,7 @@
 
 Containerized build and dev environment for AP1 modules, modelled on
 [WATonomous' wato_monorepo](https://github.com/WATonomous/wato_monorepo).
-Perception, control, and planning run on it. Other modules still use `ap1_setup.sh`.
+Modules with Docker services are defined in `modules/`. Use `ap1_setup.sh` for native setup.
 
 Perception images come in two variants built from the same files:
 
@@ -11,9 +11,9 @@ Perception images come in two variants built from the same files:
 | `cpu` | `ubuntu:24.04` | `onnxruntime` | anyone, no GPU needed (image ~2.9 GB) |
 | `gpu` | `nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04` | `onnxruntime-gpu` | NVIDIA GPU machines (image ~8.3 GB) |
 
-The code is identical in both. Only the installed packages differ, and the
-YOLO node's `device` parameter picks the hardware. Control has no GPU code, so
-it only has a CPU image (see [Control](#control)).
+Both variants run the same perception code with different dependencies. The
+YOLO node's `device` parameter selects the hardware. See
+[Control and planning](#control-and-planning) for the CPU-only services.
 
 ## Setup
 
@@ -197,97 +197,71 @@ The GPU image sets `AP1_GPU=1`, which makes `yolo.launch.py` default to
 `device:=cuda` (failing at startup if the GPU isn't usable, rather than silently
 running on CPU). `device:=auto` uses the GPU when available.
 
-### Control
+### Control and planning
 
-Control is CPU only, so its targets and services have no `-cpu`/`-gpu` suffix:
-`control` (deploy) and `control-dev`. The dev container mounts `src/msgs` and
-`src/control`, builds both with colcon on startup, and runs `control_node` with
-the CSV from the checkout. Build output and node logs appear in the terminal:
+Both modules have CPU deploy and dev images. Each node loads one ROS parameter
+file at startup:
 
-```bash
-docker buildx bake -f docker/docker-bake.hcl --load control-dev
-docker compose up control-dev
-```
+| Service | ROS node | Parameter file |
+|---|---|---|
+| `control` | `/ap1_control` | `src/control/config/control.yaml` |
+| `planning` | `/ap1_planning` | `src/planning/config/planner.yaml` |
 
-Press Ctrl+C to stop the attached service. To keep it running in the background,
-use `docker compose up -d control-dev` and follow output with
-`docker compose logs -f control-dev`. To open a ROS shell while the node runs,
-use `docker compose exec control-dev bash`.
+Control's file contains the controller settings. Planning's file contains the
+topics, debug setting, and ordered state-machine transitions.
 
-For a ROS shell without starting the node, use
-`docker compose run --rm -T=false control-dev bash -i`. From `/ws` you can
-build and start it manually:
+Build and launch the deploy services from the repo root:
 
 ```bash
-colcon build --symlink-install
-source install/setup.bash
-ros2 run ap1_control control_node /ws/src/control/config/control_node_cfg.csv
+docker buildx bake -f docker/docker-bake.hcl --load control planning
+docker compose up -d control planning
+docker compose logs -f control planning
 ```
 
-The deploy service runs the node with the CSV installed in the image
-(`/opt/ap1/share/ap1_control/config/control_node_cfg.csv`), so rebuild the
-`control` image after changing the config:
+Deploy services load their parameter files from
+`/opt/ap1/share/<package>/config/` inside the image. Rebuild the corresponding
+image after editing its YAML. Both nodes log when initialized. They report
+missing inputs while upstream ROS topics are idle.
+
+Both dev services mount their module and shared message sources, keep colcon
+output in named volumes, and automatically build and start the node with the
+parameter file from the checkout. Stop any running deploy instances for those
+modules before starting the dev services:
 
 ```bash
-docker buildx bake -f docker/docker-bake.hcl --load control
-docker compose up -d control
-docker compose logs -f control
+docker compose stop control planning
+docker buildx bake -f docker/docker-bake.hcl --load control-dev planning-dev
+docker compose up control-dev planning-dev
 ```
 
-It logs `Velocity is null or nan. Skipping update.` every 2 seconds until
-something publishes `/ap1/actuation/speed`. That's expected.
+Press Ctrl+C to stop the attached services. Use `docker compose up -d` with the
+same service names to run them in the background, then use
+`docker compose logs -f control-dev planning-dev` to follow output.
 
-### Planning
+| ROS shell | Control | Planning |
+|---|---|---|
+| While the node runs | `docker compose exec control-dev bash` | `docker compose exec planning-dev bash` |
+| Shell only | `docker compose run --rm -T=false control-dev bash -i` | `docker compose run --rm -T=false planning-dev bash -i` |
 
-Planning is CPU only. The `planning` deploy service runs the installed
-`ap1_planning/planner_node`. It passes `stop_sign_transitions.yaml` as the first
-argument to configure the state machine and loads `planner.yaml` as ROS
-parameters for the topic names and debug setting. The command sets the ROS
-node name to `ap1_planning` to match the parameter file.
+If the standalone shell detaches, use `docker compose run --rm -T SERVICE printenv ROS_DISTRO`
+to verify the environment. Replace `SERVICE` with the dev service name.
+
+To build manually in either ROS shell, run `colcon build --symlink-install`
+from `/ws` and source `install/setup.bash`. If the node is stopped, start it
+with the corresponding command:
 
 ```bash
-docker buildx bake -f docker/docker-bake.hcl --load planning
-docker compose up -d planning
-docker compose logs -f planning
+ros2 run ap1_control control_node --ros-args --params-file /ws/src/control/config/control.yaml
+ros2 run ap1_planning planner_node --ros-args --params-file /ws/src/planning/config/planner.yaml
 ```
-
-Both config files are installed under `/opt/ap1/share/ap1_planning/config`.
-Rebuild the deploy image after editing either file.
-
-For development, `planning-dev` mounts `src/msgs` and `src/planning` and
-keeps colcon output in named volumes.
-
-```bash
-docker buildx bake -f docker/docker-bake.hcl --load planning-dev
-docker compose up -d planning-dev
-docker compose exec planning-dev bash
-```
-
-Inside the container, build and launch the planner:
-
-```bash
-cd /ws
-colcon build --symlink-install
-source install/setup.bash
-ros2 run ap1_planning planner_node /ws/src/planning/config/stop_sign_transitions.yaml --ros-args -r __node:=ap1_planning --params-file /ws/src/planning/config/planner.yaml
-```
-
-Look for `Path Planner Node initialized.` In another terminal, open a second
-shell with `docker compose exec planning-dev bash` and run
-`ros2 node info /ap1_planning` to see the node's publishers and subscriptions.
-Press Ctrl+C in the first shell to stop the planner, then exit and run
-`docker compose stop planning-dev` from the host.
-
-Stop a module's deploy container before starting its dev node. For example,
-`docker compose stop control planning` stops both deploy nodes before dev testing.
 
 ### All modules
 
-The `all` images hold every Docker module (perception, control, and planning) in
-one image, built from the same commit with one shared `ap1_msgs`.
+The `all` images bundle the containerized modules from the same commit with one
+shared build of `ap1_msgs`.
 
 For development, `all-dev-cpu` and `all-dev-gpu` are single containers with the
-sources of `src/msgs`, `src/perception`, `src/control`, and `src/planning` mounted at `/ws/src`.
+module sources and shared messages mounted at `/ws/src`.
 Build and run everything from one shell:
 
 ```bash
@@ -296,13 +270,12 @@ docker compose up -d all-dev-cpu
 docker compose exec all-dev-cpu bash
 ```
 
-Inside, `colcon build` from `/ws` builds all four packages, then any `ros2`
-command works as in the module dev containers.
+Inside, `colcon build` from `/ws` builds the mounted packages. Source
+`install/setup.bash` to use them with `ros2`.
 
 For deployment, `all-deploy` is a GPU image (`ap1/all:gpu`), like the car. The
-`all-deploy` profile runs one container per module from it, `all-perception`,
-`all-control`, and `all-planning`, with the same commands and mounts as the module services. Each
-restarts and logs on its own:
+`all-deploy` profile runs one container per module with the same commands and
+mounts as the standalone services. Each restarts and logs on its own:
 
 ```bash
 docker buildx bake -f docker/docker-bake.hcl --load all-deploy
@@ -310,8 +283,8 @@ docker compose --profile all-deploy up -d
 docker compose logs -f all-perception
 ```
 
-Don't run the `all-deploy` profile alongside the module deploy services
-(`perception-gpu`, `control`, `planning`): every node would run twice.
+Stop standalone deploy services for the same modules before starting
+`all-deploy` to avoid duplicate ROS nodes.
 
 ### Settings
 
@@ -370,15 +343,13 @@ Never pip-install `numpy`: ROS's `cv_bridge` is built against Ubuntu's numpy
 .env.example                  template for local Compose settings (Setup step 4)
 .dockerignore                 keeps bags and build output out of images
 bags/                         recordings, mounted at /ws/bags (contents gitignored)
-modules/                      how modules run (CPU and GPU services per module, CPU only for control and planning)
+modules/                      how modules run and which hardware variants they support
   docker-compose.yaml         deploy services: mounts, networking, launch commands
   docker-compose.dev.yaml     dev services: extend deploy and mount source
 docker/                       how images are built
   base.Dockerfile             ROS Jazzy base, plus the shared pipeline:
                               rosdep scan -> install -> build -> deploy/develop
-  perception.Dockerfile       perception's sources and extra dependencies
-  control.Dockerfile          control's sources and extra dependencies
-  planning.Dockerfile         planning's sources and extra dependencies
+  <module>.Dockerfile         module sources and extra dependencies
   all.Dockerfile              merges every module's sources for the all-modules images
   docker-bake.hcl             build graph: variants x targets (used locally and by CI)
   config/                     entrypoint, shell env, pip version pins, pyproject mask
@@ -446,8 +417,8 @@ include a module in the all-modules images, also add a `COPY` line in
 
 ## CI
 
-Three workflows build the deploy images on every PR that touches their module,
-`docker/` or `src/msgs/`:
+Module image workflows build and test deploy images on PRs that touch their
+module, `docker/`, or `src/msgs/`:
 
 - `.github/workflows/perception-images.yml` builds both perception variants
   and runs the deploy tests in each. The runners have no GPU, so the GPU
@@ -456,15 +427,15 @@ Three workflows build the deploy images on every PR that touches their module,
 - `.github/workflows/control-images.yml` builds the control image and checks
   that `control_node` starts with its installed config and stays up.
 - `.github/workflows/planning-images.yml` builds the planning image and checks
-  that `planner_node` starts with both installed YAML files and stays up.
+  that `planner_node` starts with its installed parameter file and stays up.
 
-On `main` they push `ghcr.io/we-autopilot/ap1/{perception,control,planning}` images plus
-a per-commit tag. They also run on pushes to `development`, without pushing
+On `main` they push module images to `ghcr.io/we-autopilot/ap1/<module>`
+with a per-commit tag alongside the regular tag. They also run on pushes to `development`, without pushing
 images, so PRs into `development` start from a warm build cache.
 
-The build cache lives in the GitHub Actions cache, one scope per image
-(`perception-cpu`, `perception-gpu`, `control`, `planning`. See `cache_from` and `cache_to`
-in `docker-bake.hcl`. A PR can read its own cache and its base branch's. A
+Each image uses its own GitHub Actions cache scope. See `cache_from` and
+`cache_to` in `docker-bake.hcl`. A PR can read its own cache and its base
+branch's. A
 build only reinstalls packages when a `package.xml` or `pip-constraints.txt`
 changes, as long as the rule in [How the build works](#how-the-build-works)
 holds. The all-modules images aren't built in CI.

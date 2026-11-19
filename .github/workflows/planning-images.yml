@@ -55,16 +55,13 @@ jobs:
           targets: planning
           load: true
 
-      # Runs planner_node with the YAML files installed in the image, as the deploy
-      # service does. timeout exits with 124 when the node is still running
-      # after 10 s; anything else means it crashed or exited.
+      # Check that the node stays up for 10 seconds with its installed ROS parameters.
+      # timeout returns 124 if the node was still running at the deadline.
       - name: Smoke test
         run: |
           docker run --rm "$IMAGE:cpu" bash -c '
             timeout 10 ros2 run ap1_planning planner_node \
-              /opt/ap1/share/ap1_planning/config/stop_sign_transitions.yaml \
-              --ros-args -r __node:=ap1_planning \
-              --params-file /opt/ap1/share/ap1_planning/config/planner.yaml
+              --ros-args --params-file /opt/ap1/share/ap1_planning/config/planner.yaml
             test $? -eq 124'
 
       - name: Log in to GHCR

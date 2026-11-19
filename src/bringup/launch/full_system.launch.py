@@ -61,29 +61,24 @@ def generate_launch_description():
     )
     
     # == CONTROL NODE ==
-    # needs a path to control cfg.csv
     pkg_share = get_package_share_directory('ap1_control')
-    csv_file_path = os.path.join(pkg_share, 'config', 'control_node_cfg.csv')
+    control_yaml_path = os.path.join(pkg_share, 'config', 'control.yaml')
     control = CriticalNode(
         package='ap1_control',
         executable='control_node',
         name='ap1_control',
         output='log', 
-        arguments=[
-            csv_file_path
-        ],
+        parameters=[control_yaml_path],
     )
 
     # == PLANNER NODE ==
     pkg_share = get_package_share_directory('ap1_planning')
-    transitions_file_path = os.path.join(pkg_share, 'config', 'stop_sign_transitions.yaml')
     planner_yaml_path = os.path.join(pkg_share, 'config', 'planner.yaml')
     planner = CriticalNode(
         package='ap1_planning',
         executable='planner_node',
         name='ap1_planning',
         output='log', 
-        arguments=[transitions_file_path],
         parameters=[planner_yaml_path]
     )
 

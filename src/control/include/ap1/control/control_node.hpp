@@ -58,7 +58,7 @@ class ControlNode : public rclcpp::Node
     void control_loop_callback();
 
   public:
-    ControlNode(const std::string& cfg_path, float rate_hz = 60);
+    explicit ControlNode(double rate_hz = 60);
 };
 } // namespace ap1::control
 

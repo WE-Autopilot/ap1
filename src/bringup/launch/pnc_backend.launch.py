@@ -16,8 +16,8 @@ def generate_launch_description():
         executable='control_node',
         name='ap1_control',
         output='screen',
-        arguments=[
-            os.path.join(get_package_share_directory('ap1_control'), 'config', 'control_node_cfg.csv'),
+        parameters=[
+            os.path.join(get_package_share_directory('ap1_control'), 'config', 'control.yaml'),
         ],
     )
 
@@ -26,8 +26,8 @@ def generate_launch_description():
         executable='planner_node',
         name='ap1_planning',
         output='screen',
-        arguments=[
-            os.path.join(get_package_share_directory('ap1_planning'), 'config', 'stop_sign_transitions.yaml'),
+        parameters=[
+            os.path.join(get_package_share_directory('ap1_planning'), 'config', 'planner.yaml'),
         ],
     )
 

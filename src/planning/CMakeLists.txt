@@ -11,7 +11,6 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(ap1_msgs REQUIRED)
-find_package(yaml-cpp REQUIRED)
 
 add_executable(planner_node
   src/behaviours.cpp
@@ -34,9 +33,6 @@ ament_target_dependencies(
   std_msgs
   geometry_msgs
   ap1_msgs
-)
-target_link_libraries(planner_node 
-  yaml-cpp
 )
 
 install(TARGETS

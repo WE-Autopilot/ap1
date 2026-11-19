@@ -42,7 +42,7 @@ struct FSM
     VehicleState current_state;          // the state of the vehicle
     std::vector<Transition> transitions; // transitions between states
 
-    FSM(rclcpp::Time now, VehicleState default_state, std::string transitions_path);
+    FSM(rclcpp::Time now, VehicleState default_state, std::vector<Transition> transitions);
 };
 
 // Lookup tables
@@ -58,13 +58,8 @@ constexpr std::array<std::pair<std::string_view, Event>, 4> event_table{
      {"StopTimeElapsed", Event::StopTimeElapsed},
      {"DriveThruDistanceCovered", Event::DriveThruDistanceCovered}}};
 
-/**
- * @brief Loads a transition table from a yaml file.
- *
- * @param path
- * @return std::vector<Transition>
- */
-std::vector<Transition> load_transitions_from_file(std::string path);
+// Entries are ordered triples of source state, event, and destination state.
+std::vector<Transition> parse_transitions(const std::vector<std::string>& entries);
 
 /**
  * @brief Transitions to the next state based on a transition table and current state.
