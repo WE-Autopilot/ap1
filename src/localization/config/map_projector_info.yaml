@@ -1,0 +1,4 @@
+# Read by autoware_map_projection_loader (launch/map_loader.launch.py).
+# Our maps are in a local frame (LIO-SAM's start pose) with no GNSS projection.
+# Case-sensitive: must be exactly "Local".
+projector_type: Local
