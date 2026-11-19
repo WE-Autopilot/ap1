@@ -161,6 +161,30 @@ scripts/map_carla.sh Town02 --short
 
 See `src/mapping/README.md` for details.
 
+### Autoware NDT localization
+
+Localization runs two Autoware nodes from apt (Jazzy, amd64 and arm64): `autoware_map_loader` serves our `.pcd` map and `autoware_ndt_scan_matcher` matches each LiDAR scan against it. Both are declared in `src/localization/package.xml`, so `ap1_setup.sh` (or the `rosdep install` in step 4) installs them. To install them on their own:
+
+```bash
+sudo apt-get update
+rosdep install --from-paths src/localization --ignore-src -y
+# same as: sudo apt install ros-jazzy-autoware-ndt-scan-matcher ros-jazzy-autoware-map-loader
+```
+
+Check that both nodes start with Autoware's default parameters (each should come up and keep running; Ctrl-C to stop). Don't use `--ros-args --help`: it isn't a valid ROS argument and aborts every node.
+
+```bash
+ros2 launch autoware_ndt_scan_matcher ndt_scan_matcher.launch.xml
+MAP=<path/to/map.pcd>
+ros2 launch autoware_map_loader pointcloud_map_loader.launch.xml \
+  pointcloud_map_path:=$MAP pointcloud_map_metadata_path:=none \
+  pcd_paths_or_directory:=$MAP pcd_metadata_path:=none
+```
+
+The map loader needs a real `.pcd` (e.g. a LIO-SAM `GlobalMap.pcd`). Its param file reads `pcd_paths_or_directory` and `pcd_metadata_path`, which its own launch file doesn't set (a parent Autoware launch normally does), so pass all four. A single-file map needs no metadata YAML; any path that doesn't exist (like `none`) makes the loader read the bounds from the cloud. NDT idles with a warning until it is activated and has a map; that's expected.
+
+How they connect: NDT gets its map from the loader over a service, not a topic. Its client `pcd_loader_service` (`autoware_map_msgs/srv/GetDifferentialPointCloudMap`) must be remapped to the loader's `service/get_differential_pcd_map`. The loader's latched `/map/pointcloud_map` topic is for RViz only. NDT also starts deactivated and ignores scans until its `trigger_node_srv` (`std_srvs/SetBool`) is called with `true`.
+
 ### Console UI only
 ```bash
 ros2 run ap1_console console
