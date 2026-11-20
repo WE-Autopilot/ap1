@@ -1,0 +1,28 @@
+# Settings for record_bag.py. Each one has a command-line flag of the same name
+# that overrides it (bag_dir -> --bag-dir). Sensor settings are in airy_lite.yaml
+# and cv7_ahrs.yaml, and mount poses in mounts.yaml.
+
+map: Town01                       # the v0.0 map
+spawn_point: 0                    # index into the map's spawn points; the loop starts and ends here
+vehicle: vehicle.tesla.model3     # CARLA blueprint
+
+tick_s: 0.01                      # sim step; each tick is one LiDAR slice and one IMU sample
+speed_kmh: 10.0                   # the kart's cap
+
+settle_s: 1.0                     # not recorded: the car drops onto its wheels
+still_s: 2.0                      # recorded standing still at both ends (IMU init for LIO-SAM)
+
+lookahead_m: 4.5                  # how far ahead on the route the follower steers toward
+max_off_route_m: 5.0              # stop with an error if the car gets this far off the route
+stuck_s: 15.0                     # stop with an error if the car doesn't move for this long
+sensor_timeout_s: 20.0            # stop with an error if CARLA sends no data for this long
+
+# At exactly the sensor config's resolution CARLA's rays land on the filter's
+# azimuth bin edges and some bins come out empty; twice the rays puts one mid-bin.
+lidar_oversample: 2
+# Raw range; the filter crops to the config's dark-target ranges.
+lidar_range_m: 60.0
+
+# Where bags go, unless --out names a path. ~ is expanded. A relative path is
+# taken from the folder you run in, so use an absolute or ~ path here.
+bag_dir: ~/WEAP/bags

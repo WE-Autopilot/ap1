@@ -9,7 +9,7 @@
 
 # Option 1 -- Script (Recommended)
 
-This script will auto detect if you're using zsh or bash and other environment variables. You may need to give sudo permissions to the script.s
+This script will auto detect if you're using zsh or bash and other environment variables. You may need to give sudo permissions to the script.
 
 ```bash
 chmod +x ap1_setup.sh
@@ -38,12 +38,14 @@ If you already imported the repos yourself and want setup to skip that step:
 ## 1. Clone the Workspace
 
 ```bash
-mkdir -p ~/Documents/ap1
+git clone https://github.com/WE-Autopilot/ap1.git ~/Documents/ap1
 cd ~/Documents/ap1
-
-# THIS STEP IS BEING DEPRECATED
 vcs import < ap1.repos
 ```
+
+`vcs import` pulls in LIO-SAM (`src/external/LIO-SAM`).
+
+`ap1_setup.sh` also patches LIO-SAM's CMakeLists for Jazzy, so on the manual route use the script for that step or LIO-SAM may not build.
 
 Run `vcs import` from the workspace root. The paths in `ap1.repos` already
 include `src/`, so importing from inside `src/` creates nested paths such as
@@ -86,8 +88,10 @@ cd ~/Documents/ap1
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
 
-colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+colcon build --symlink-install
 ```
+
+Release is already set per package in `colcon.meta`, which colcon reads automatically from the workspace root.
 
 > **Tip:** For C++ IDE support (clangd autocomplete in `ap1_control`/`ap1_planning`, i.e., this is mainly for planning & control team):
 > ```bash
@@ -126,16 +130,36 @@ ros2 launch ap1_bringup full_system.launch.py
 ros2 launch ap1_bringup pnc_backend.launch.py
 ```
 
-### Mapping & Localization pipeline only
+### LIO-SAM (map building)
+
+`ap1_setup.sh` clones LIO-SAM into `src/external/LIO-SAM` at a pinned commit and patches it for Jazzy, so `git status` inside that folder shows modified files. That's expected.
+
 ```bash
-ros2 launch mapping_localization_python mapping_pipeline.launch.py
-
-# With Kitware SLAM enabled:
-ros2 launch mapping_localization_python mapping_pipeline.launch.py use_kitware_slam:=true
-
-# With synthetic perception data (no real sensors needed):
-ros2 launch mapping_localization_python mapping_pipeline.launch.py use_synthetic_perception:=true
+ros2 launch lio_sam run.launch.py
 ```
+
+To test it on the LIO-SAM paper's Walking dataset:
+
+1. Download it from the [LIO-SAM sample datasets](https://drive.google.com/drive/folders/1gJHwfdHCRdjP7vuT556pv8atqrCJPbUq) and convert it to ROS 2:
+   ```bash
+   pip install rosbags --break-system-packages
+   rosbags-convert --src walking_dataset.bag --dst walking_dataset
+   ```
+2. Run in two terminals from the workspace root:
+   ```bash
+   ros2 launch lio_sam run.launch.py params_file:=src/mapping/config/lio_sam_paper.yaml
+   ros2 bag play walking_dataset --clock
+   ```
+
+#### Map a CARLA town
+
+Start CARLA 0.9.16, then run:
+
+```bash
+scripts/map_carla.sh Town02 --short
+```
+
+See `src/mapping/README.md` for details.
 
 ### Console UI only
 ```bash
@@ -182,19 +206,15 @@ ros2 topic echo --once /ap1/mapping/lanes
 # List all active nodes
 ros2 node list
 
-# Expected nodes on fullsystem launch:
+# Expected nodes on full_system launch:
+# /ap1_console
 # /ap1_control
 # /ap1_planning
-# /ap1_yolo
 # /ap1_ufld_ground
-# /ap1_console
-# /perception_pipeline
-# /stored_point_registry
-# /slam_bridge
-# /base_to_lidar_tf
+# /ap1_yolo
 
-# Check a topic is publishing
-ros2 topic echo /ap1/localization/slam_pose
+# List active topics
+ros2 topic list
 ```
 
 ---
@@ -218,3 +238,5 @@ ros2 launch ap1_bringup full_system.launch.py
 | `No module named 'PyQt6'` | Console requires PyQt6 | `pip install PyQt6` into the active venv |
 | All nodes shut down immediately | A `CriticalNode` crashed (usually `yolo_node`) | Fix the crashing node first — it takes down the whole system on exit |
 | `WARN: Velocity is null` / `necessary field is null` | Normal at startup | Nodes are waiting for sensor data — not an error |
+| LIO-SAM path flies off or `Large velocity, reset IMU-preintegration!` | Params don't match the bag's sensors | Check `extrinsicRot`/`extrinsicRPY`, `sensor`, `N_SCAN` and `Horizon_SCAN` in the params file |
+| `existing path cannot be removed: Is a directory` during `colcon build` | Switched between `--symlink-install` and a plain build in the same workspace | `rm -rf build install log` then rebuild |
