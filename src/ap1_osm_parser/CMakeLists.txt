@@ -20,6 +20,16 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   tinyxml2::tinyxml2
 )
 
+add_executable(osm_parser_cli
+  src/osm_parser_cli.cpp
+)
+target_link_libraries(osm_parser_cli
+  ${PROJECT_NAME}
+)
+install(TARGETS osm_parser_cli
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(TARGETS ${PROJECT_NAME}
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
