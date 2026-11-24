@@ -9,10 +9,16 @@ that come sooner are skipped), and publishes:
   lidar points can be projected straight onto the class map.
 - LABEL_INFO_TOPIC: vision_msgs/LabelInfo mapping class IDs to names, latched.
 
-Once a second it logs how many frames arrived, how many were segmented and the
-average inference time, to show where frames go missing.
+Once a second it logs where the time goes and where frames go missing:
+- received / skipped (by the rate cap) / processed frames
+- missed: frames that never reached the node, counted from gaps in the camera
+  timestamps (lost in transport, or replaced in the queue while the node was busy)
+- time per processed frame for each step: unpack, convert, model, publish
+- busy: share of the second the node spent working. Near 100% means the node itself
+  is the bottleneck; low busy with missed frames means they're lost before the node.
 """
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +29,7 @@ from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import CameraInfo, Image
 from vision_msgs.msg import LabelInfo, VisionClass
 
@@ -77,10 +84,18 @@ class RoadSegNode(Node):
         self._camera_info: CameraInfo | None = None
         self._last_processed: float | None = None  # time.monotonic() of the last segmented frame
 
+        # Camera timestamps, to count frames that never reached the node
+        self._last_stamp: float | None = None
+        self._frame_period: float | None = None  # smallest gap seen between camera frames
+
         # Counters for the once-a-second log line (reset after each line)
         self._received = 0
+        self._skipped = 0
         self._processed = 0
-        self._infer_time = 0.0
+        self._missed = 0
+        self._step_time = defaultdict(float)  # seconds per step, summed over processed frames
+        self._busy_time = 0.0                 # seconds spent inside the image callback
+        self._stats_start = time.perf_counter()
 
         # Startup-only parameters: changing these needs a node restart (not a rebuild).
         # model_path defaults to the model installed with the package.
@@ -109,9 +124,14 @@ class RoadSegNode(Node):
         self._label_pub.publish(self._label_info())
 
         # Depth 1: while a frame is being segmented, keep only the newest waiting frame,
-        # never a backlog of stale ones. Best effort, like other camera subscribers.
-        image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
-        self.create_subscription(Image, image_topic, self._image_callback, image_qos)
+        # never a backlog of stale ones. Reliable, not best effort: an image is hundreds of
+        # packets, and best effort drops the whole image when any one of them is lost
+        # (on the KITTI bag in Docker that lost over half the frames). A best-effort
+        # publisher still works with this: delivery then falls back to best effort.
+        image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
+        # raw=True: the callback gets the serialized bytes and unpacks them itself, so the
+        # unpacking (slow in Python for big images) shows up in the step timings
+        self.create_subscription(Image, image_topic, self._image_callback, image_qos, raw=True)
         self.create_subscription(CameraInfo, info_topic, self._camera_info_callback, 10)
 
         self.create_timer(1.0, self._log_stats)
@@ -130,22 +150,41 @@ class RoadSegNode(Node):
     def _camera_info_callback(self, msg: CameraInfo) -> None:
         self._camera_info = msg
 
-    def _image_callback(self, msg: Image) -> None:
+    def _image_callback(self, data: bytes) -> None:
+        start = time.perf_counter()
+        msg = deserialize_message(data, Image)
+        unpack = time.perf_counter() - start
         self._received += 1
+        self._count_missed(msg)
+
         now = time.monotonic()
         # Cap at rate_hz: skip frames that come too soon after the last segmented one.
         # The 0.9 is slack for jitter, so a 10 Hz camera still gets every frame while a
         # 20 Hz camera (the AP1 camera) gets every other one.
         if self._last_processed is not None and now - self._last_processed < 0.9 * self._min_period:
-            return
-        self._last_processed = now
-        self._process(msg)
+            self._skipped += 1
+        else:
+            self._last_processed = now
+            self._step_time['unpack'] += unpack
+            self._process(msg)
+        self._busy_time += time.perf_counter() - start
+
+    def _count_missed(self, msg: Image) -> None:
+        """Count camera frames that never reached the node, from gaps in their timestamps."""
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if self._last_stamp is not None:
+            gap = stamp - self._last_stamp
+            if gap > 0:  # a bag played with --loop jumps back at each restart: ignore that
+                self._frame_period = gap if self._frame_period is None else min(self._frame_period, gap)
+                self._missed += max(round(gap / self._frame_period) - 1, 0)
+        self._last_stamp = stamp
 
     def _process(self, image_msg: Image) -> None:
+        t0 = time.perf_counter()
         rgb = self._bridge.imgmsg_to_cv2(image_msg, desired_encoding='rgb8')
-        start = time.perf_counter()
-        class_map = self._model(rgb)
-        self._infer_time += time.perf_counter() - start
+        t1 = time.perf_counter()
+        class_map = self._model(rgb)  # preprocessing + inference
+        t2 = time.perf_counter()
         self._processed += 1
 
         # Built by hand: the pip cv_bridge (native uv setup) calls ndarray.tostring()
@@ -162,15 +201,28 @@ class RoadSegNode(Node):
             info = scale_camera_info(self._camera_info, out.width, out.height)
             info.header = image_msg.header
             self._info_pub.publish(info)
+        t3 = time.perf_counter()
+
+        self._step_time['convert'] += t1 - t0
+        self._step_time['model'] += t2 - t1
+        self._step_time['publish'] += t3 - t2
 
     def _log_stats(self) -> None:
-        """Log the last second's frame counts and inference time, then reset them."""
+        """Log the last second's frame counts, step times and busy share, then reset them."""
+        elapsed = time.perf_counter() - self._stats_start
         if self._received:
-            ms = 1000 * self._infer_time / max(self._processed, 1)
+            n = max(self._processed, 1)
+            steps = {name: 1000 * self._step_time[name] / n for name in ('unpack', 'convert', 'model', 'publish')}
+            total = sum(steps.values())
             self.get_logger().info(
-                f"last 1 s: received {self._received}, processed {self._processed}, {ms:.0f} ms per frame")
-        self._received = self._processed = 0
-        self._infer_time = 0.0
+                f"last {elapsed:.1f} s: received {self._received} (missed {self._missed}, skipped {self._skipped}), "
+                f"processed {self._processed} | "
+                + ", ".join(f"{name} {ms:.0f}" for name, ms in steps.items())
+                + f" = {total:.0f} ms/frame | busy {100 * self._busy_time / elapsed:.0f}%")
+        self._received = self._skipped = self._processed = self._missed = 0
+        self._step_time.clear()
+        self._busy_time = 0.0
+        self._stats_start = time.perf_counter()
 
 
 def main(args=None):
