@@ -45,6 +45,18 @@ ament_target_dependencies(localization_node
 
 target_link_libraries(localization_node ${PCL_LIBRARIES})
 
+add_executable(dead_reckoning_node src/dead_reckoning_node.cpp)
+target_compile_features(dead_reckoning_node PRIVATE cxx_std_17)
+ament_target_dependencies(dead_reckoning_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  ap1_msgs
+)
+
 # Perception objects -> P&C (ICD #2 -> #10)
 add_executable(object_relay_node src/object_relay_node.cpp)
 ament_target_dependencies(object_relay_node
@@ -60,7 +72,7 @@ ament_target_dependencies(fake_perception_objects
   ap1_msgs
 )
 
-install(TARGETS localization_node object_relay_node fake_perception_objects
+install(TARGETS localization_node dead_reckoning_node object_relay_node fake_perception_objects
   DESTINATION lib/${PROJECT_NAME}
 )
 

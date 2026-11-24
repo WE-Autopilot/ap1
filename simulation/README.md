@@ -68,6 +68,13 @@ to swap in a whole other settings file. Other flags:
 | `--host`, `--port` | `$CARLA_HOST` or `localhost`, `2000` | CARLA server; ports 2000 and 2001 must both be reachable |
 | `--out` | `<bag_dir>/<name>_raw` | raw bag path (`--out` paths get no `_short` suffix) |
 | `--filter` | off | run `filter_bag.py` afterwards |
+| `--wheel-speed` | off | record `/ap1/actuation/speed` as `ap1_msgs/msg/FloatStamped` for dead reckoning |
+
+Source the built `ap1_msgs` overlay before recording wheel speed. The recorder
+averages the two rear wheels' angular speeds times their respective radii and
+stamps the resulting signed m/s at about 20 Hz. The filter copies this topic
+through, alongside the separate ground-truth pose. Use `record_bag.py` directly
+for a localization test drive so the drive doesn't also generate a new map.
 
 - **Setup.** Install the packages in [requirements.txt](requirements.txt). The
   `carla` client must match the server's version; the recorder checks at startup

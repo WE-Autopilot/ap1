@@ -7,6 +7,8 @@ import numpy as np
 from carla_frames import (MAP_FRAME, ODOM_TOPIC, VEHICLE_FRAME, body_rate, ns_to_stamp,
                           quat_from_rpy, ros_pose, rot_matrix, topic_metadata)
 
+WHEEL_SPEED_TOPIC = '/ap1/actuation/speed'
+
 
 def bag_base(map_name, lidar_path, lidar_cfg, imu_path, imu_cfg, short=False):
     """Bag name without the _raw or _filtered ending; see "Quick start" in the README."""
@@ -29,7 +31,7 @@ def latched_metadata(name, type_name):
 class BagWriter:
     """Builds the ROS messages for one tick and writes them, stamped with sim time."""
 
-    def __init__(self, uri, lidar_cfg, imu_cfg):
+    def __init__(self, uri, lidar_cfg, imu_cfg, *, record_wheel_speed=False):
         import rosbag2_py
         self.lidar_topic, self.lidar_frame = lidar_cfg['topics']['input'], lidar_cfg['frame_id']
         self.imu_topic, self.imu_frame = imu_cfg['topics']['input'], imu_cfg['frame_id']
@@ -41,6 +43,8 @@ class BagWriter:
             '/tf': 'tf2_msgs/msg/TFMessage',
             '/tf_static': 'tf2_msgs/msg/TFMessage',
         }
+        if record_wheel_speed:
+            types[WHEEL_SPEED_TOPIC] = 'ap1_msgs/msg/FloatStamped'
         self.writer = rosbag2_py.SequentialWriter()
         self.writer.open(rosbag2_py.StorageOptions(uri=uri, storage_id='mcap'),
                          rosbag2_py.ConverterOptions('cdr', 'cdr'))
@@ -72,7 +76,7 @@ class BagWriter:
                for frame in (self.lidar_frame, self.imu_frame)]
         self._write('/tf_static', TFMessage(transforms=tfs), t_ns)
 
-    def write_tick(self, t_ns, ego, lidar, imu, dt):
+    def write_tick(self, t_ns, ego, lidar, imu, dt, *, wheel_speed_mps=None):
         """ego: carla.ActorSnapshot; lidar/imu: this tick's CARLA measurements."""
         from nav_msgs.msg import Odometry
         from rosgraph_msgs.msg import Clock
@@ -81,6 +85,11 @@ class BagWriter:
         stamp = ns_to_stamp(t_ns)
         self.first_ns = t_ns if self.first_ns is None else self.first_ns
         self._write('/clock', Clock(clock=stamp), t_ns)
+        if wheel_speed_mps is not None:
+            from ap1_msgs.msg import FloatStamped
+            speed = FloatStamped(value=wheel_speed_mps)
+            speed.header.stamp, speed.header.frame_id = stamp, 'base_link'
+            self._write(WHEEL_SPEED_TOPIC, speed, t_ns)
 
         # Ground truth: map -> vehicle, twist in the vehicle frame.
         xyz, q = ros_pose(ego.get_transform())
