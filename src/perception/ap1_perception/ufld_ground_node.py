@@ -42,6 +42,8 @@ class UfldGroundNode(Node):
         self._K: np.ndarray | None = None
         self._model: UFLDONNX | None = None
         self._ransac = GroundRANSAC()
+        # 'auto', 'tensorrt', 'cuda' or 'cpu' (see ap1_perception.runtime)
+        self._device = self.declare_parameter('device', 'cpu').value
 
         self._lane_pub = self.create_publisher(LaneBoundaries, LANE_TOPIC, 10)
         self._plane_pub = self.create_publisher(PlaneMsg, PLANE_TOPIC, 10)
@@ -59,7 +61,7 @@ class UfldGroundNode(Node):
         if self._K is not None:
             return
         self._K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
-        self._model = UFLDONNX(ori_size=(msg.width, msg.height))
+        self._model = UFLDONNX(ori_size=(msg.width, msg.height), device=self._device)
 
         self.get_logger().info(f"UFLD model initialized with image size ({msg.width}, {msg.height}).")
 

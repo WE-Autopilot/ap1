@@ -1,4 +1,4 @@
-"""Checks that perception's dependencies import and work together, and that YOLO runs.
+"""Checks that perception's dependencies import and work together, and that the models run.
 
 Needs no camera data or ROS graph.
 """
@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import numpy as np
-from perception_common import MODEL_PATH, pick_device
+from perception_common import MODEL_PATH, ROAD_SEG_MODEL_PATH, pick_device
 
 
 def test_imports():
@@ -15,7 +15,9 @@ def test_imports():
     import onnxruntime  # noqa: F401
     import rclpy  # noqa: F401
     import sensor_msgs_py.point_cloud2  # noqa: F401
+    import vision_msgs.msg  # noqa: F401
 
+    import ap1_perception.road_seg_node  # noqa: F401
     import ap1_perception.yolo_node  # noqa: F401
 
 
@@ -35,10 +37,11 @@ def test_gpu_image_has_cuda_onnxruntime():
         assert 'CUDAExecutionProvider' in available, f'GPU image without CUDA provider: {available}'
 
 
-def test_yolo_node_installed():
+def test_nodes_installed():
     from ament_index_python.packages import get_package_prefix
-    exe = Path(get_package_prefix('ap1_perception')) / 'lib' / 'ap1_perception' / 'yolo_node'
-    assert exe.is_file(), f'{exe} missing'
+    for name in ('yolo_node', 'road_seg_node'):
+        exe = Path(get_package_prefix('ap1_perception')) / 'lib' / 'ap1_perception' / name
+        assert exe.is_file(), f'{exe} missing'
 
 
 def test_yolo_inference():
@@ -50,3 +53,15 @@ def test_yolo_inference():
     boxes, scores, classes = detector.forward(np.zeros((480, 640, 3), dtype=np.uint8))
     assert boxes.shape[1] == 4
     assert len(boxes) == len(scores) == len(classes)
+
+
+def test_road_seg_inference():
+    from ap1_perception.road_seg import RoadSeg
+    device = pick_device()
+    seg = RoadSeg(model_path=ROAD_SEG_MODEL_PATH, device=device)
+    if device == 'cuda':
+        assert seg.provider == 'CUDAExecutionProvider'
+    assert seg.names[0] == 'road'
+    class_map = seg(np.zeros((1080, 1920, 3), dtype=np.uint8))
+    assert class_map.shape == (432, 768)
+    assert class_map.dtype == np.uint8

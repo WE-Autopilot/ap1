@@ -73,7 +73,7 @@ def generate_launch_description():
         if site_packages else []
     )
 
-    default_device = {'1': 'cuda', '0': 'cpu'}.get(os.environ.get('AP1_GPU'), 'auto')
+    default_device = {'1': 'tensorrt', '0': 'cpu'}.get(os.environ.get('AP1_GPU'), 'auto')
 
     args = [
         DeclareLaunchArgument(
@@ -81,7 +81,7 @@ def generate_launch_description():
             description='Path to a YOLO .onnx model; empty uses the one installed with the package'),
         DeclareLaunchArgument(
             'device', default_value=default_device,
-            description="'cuda' (fail if no GPU), 'cpu', or 'auto' (GPU when available)"),
+            description="'tensorrt' or 'cuda' (fail if unavailable), 'cpu', or 'auto' (fastest available)"),
     ]
 
     return LaunchDescription(args + env_actions + [OpaqueFunction(function=_yolo_node)])

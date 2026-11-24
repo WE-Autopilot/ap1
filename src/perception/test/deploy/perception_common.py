@@ -3,8 +3,9 @@ import os
 import subprocess
 from pathlib import Path
 
-# Where the deploy and dev services mount the YOLO model (modules/docker-compose.yaml)
+# Where the deploy and dev services mount the models (modules/docker-compose.yaml)
 MODEL_PATH = Path('/opt/ap1/models/yolo26n.onnx')
+ROAD_SEG_MODEL_PATH = Path('/opt/ap1/models/yolo26n-sem.onnx')
 
 
 def pick_device() -> str:

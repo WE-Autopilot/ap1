@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import onnxruntime as ort
 import torch
 import os
 import sys
@@ -8,10 +7,12 @@ from pathlib import Path
 import importlib.util
 
 from ..projection import pointcloud_to_pixel, get_horizon
+from ..runtime import create_session
 
 
 class UFLDONNX:
-    def __init__(self, ori_size, onnx_path=None, config_path=None, num_wps=16, wp_thresh=16, horizon_dist=16):
+    def __init__(self, ori_size, onnx_path=None, config_path=None, num_wps=16, wp_thresh=16, horizon_dist=16,
+                 device="cpu"):
         if onnx_path == None or config_path == None:
             curr_path = Path(__file__).resolve().parent
 
@@ -20,9 +21,7 @@ class UFLDONNX:
         if config_path == None:
             config_path = f"{curr_path}/config.py"
 
-        providers=['CPUExecutionProvider']
-
-        self.session = ort.InferenceSession(onnx_path, providers=providers)
+        self.session = create_session(onnx_path, device)
 
         # Input / output names
         self.input_name = self.session.get_inputs()[0].name
