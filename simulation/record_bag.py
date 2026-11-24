@@ -81,6 +81,8 @@ def parse_args(argv=None):
                    help='sensor mount poses by frame_id (default: the kart\'s)')
     p.add_argument('--out', help='raw bag path (default: <bag_dir>/<date>_<map>_<lidar>_<imu>[_short]_raw)')
     p.add_argument('--filter', action='store_true', help='also run filter_bag.py -> _filtered')
+    p.add_argument('--wheel-speed', action='store_true',
+                   help='record rear-wheel speed for dead reckoning (source the ap1_msgs overlay)')
 
     g = p.add_argument_group('overrides for the recording settings')
     g.add_argument('--map', help='CARLA map')
@@ -114,6 +116,16 @@ def get_frame(q, frame, what, timeout_s):
             raise RuntimeError(f'{what} skipped frame {frame}')
 
 
+def rear_wheel_speed_mps(vehicle, radii_m):
+    wheels = vehicle.get_telemetry_data().wheels
+    if len(wheels) != 4:
+        raise RuntimeError('wheel-speed recording requires four-wheel CARLA telemetry')
+    speed = (wheels[2].omega * radii_m[0] + wheels[3].omega * radii_m[1]) / 2.0
+    if not math.isfinite(speed):
+        raise RuntimeError('CARLA returned nonfinite wheel speed')
+    return speed
+
+
 def main():
     args = parse_args()
 
@@ -135,6 +147,11 @@ def main():
         raise SystemExit(f'{e}. Source ROS 2 (source /opt/ros/jazzy/setup.bash) and install the '
                          'CARLA client (python3 -m pip install -r simulation/requirements.txt '
                          '--break-system-packages)') from None
+    if args.wheel_speed:
+        try:
+            from ap1_msgs.msg import FloatStamped  # noqa: F401
+        except ImportError:
+            raise SystemExit('--wheel-speed requires a sourced ap1_msgs overlay') from None
 
     client = connect(args.host, args.port)
     world, original = open_world(client, cfg['map'], tick_s)
@@ -167,6 +184,14 @@ def main():
         vbp.set_attribute('role_name', 'hero')
         ego = world.spawn_actor(vbp, spawn)
         actors.append(ego)
+        rear_radii_m = None
+        if args.wheel_speed:
+            wheels = ego.get_physics_control().wheels
+            if len(wheels) != 4:
+                raise RuntimeError('--wheel-speed requires a four-wheel CARLA vehicle')
+            rear_radii_m = [wheel.radius / 100.0 for wheel in wheels[2:]]
+            if any(not math.isfinite(radius) or radius <= 0.0 for radius in rear_radii_m):
+                raise RuntimeError('CARLA returned an invalid rear-wheel radius')
         lidar_sensor = attach_sensor(world, ego, 'sensor.lidar.ray_cast', lidar_attrs,
                                      mounts[lidar_cfg['frame_id']])
         actors.append(lidar_sensor)
@@ -185,6 +210,8 @@ def main():
         settle_ticks, still_ticks = round(cfg['settle_s'] / tick_s), round(cfg['still_s'] / tick_s)
         phase, phase_ticks, slow_ticks = 'settle', 0, 0
         follow_every = max(1, round(0.1 / tick_s))   # move the camera at about 10 Hz
+        wheel_speed_every = max(1, round(0.05 / tick_s))  # sample wheel telemetry at about 20 Hz
+        ticks_recorded = 0
 
         print(f'Recording {raw}  (Ctrl+C stops early and keeps what was recorded)')
         # Driving, sensors and recording share this one loop, which keeps every
@@ -221,11 +248,15 @@ def main():
 
             if phase == 'settle':
                 if phase_ticks >= settle_ticks:
-                    writer = BagWriter(raw, lidar_cfg, imu_cfg)
+                    writer = BagWriter(raw, lidar_cfg, imu_cfg, record_wheel_speed=args.wheel_speed)
                     writer.write_static(t_ns, mounts)
                     phase, phase_ticks = 'start', 0
                 continue
-            writer.write_tick(t_ns, ego_snap, lidar, imu, tick_s)
+            wheel_speed = None
+            if rear_radii_m is not None and ticks_recorded % wheel_speed_every == 0:
+                wheel_speed = rear_wheel_speed_mps(ego, rear_radii_m)
+            writer.write_tick(t_ns, ego_snap, lidar, imu, tick_s, wheel_speed_mps=wheel_speed)
+            ticks_recorded += 1
             if phase == 'start' and phase_ticks >= still_ticks:
                 phase, phase_ticks = 'drive', 0
             elif phase == 'end' and phase_ticks >= still_ticks:

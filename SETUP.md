@@ -213,6 +213,28 @@ ros2 service call /map/get_partial_pointcloud_map autoware_map_msgs/srv/GetParti
 
 A `cell_id` and a non-zero `width` mean it returned points. In Foxglove, start the bridge with `-p send_buffer_limit:=200000000` (the default 10 MB drops the map), set the display frame to `map` and show `/map/pointcloud_map`.
 
+#### Replay dead reckoning
+
+Source the built AP1 overlay and start the node.
+
+```bash
+ros2 run ap1_localization dead_reckoning_node --ros-args -p use_sim_time:=true
+```
+
+Source the same overlay in a second terminal, inspect the filtered CARLA bag, and play it.
+
+```bash
+BAG=/path/to/filtered_bag
+ros2 bag info "$BAG"
+ros2 bag play "$BAG" --clock
+```
+
+The node takes `angular_velocity.z` in rad/s from `/sensing/imu/data`. It assumes the IMU's yaw axis is aligned with `base_link`, as in `simulation/config/mounts.yaml`. The CARLA recorder's `--wheel-speed` option writes signed m/s to `/ap1/actuation/speed` as `ap1_msgs/msg/FloatStamped`. If the bag uses the same message type on a different topic, add `-r /ap1/actuation/speed:=/recorded/speed_topic` to the node command.
+
+The first IMU sample starts the estimate at the origin. Each subsequent sample advances it using the IMU timestamp and the latest wheel-speed sample at or before that time. Translation pauses when wheel speed is missing or older than `speed_timeout_s` (0.5 s by default), while yaw continues updating. Restart the node before each replay to reset the estimate.
+
+Use `ros2 run tf2_ros tf2_echo odom base_link --ros-args -p use_sim_time:=true` to inspect the transform. To measure dead-reckoning drift, record `/tf` and `/ground_truth/odometry` during replay. Align the start of the estimated and ground-truth paths in position and yaw, compare short segments, and report the final position error and yaw drift. Use the bag's ground-truth topic for the comparison and keep `/ground_truth/tf` separate from `/tf`.
+
 ### Console UI only
 ```bash
 ros2 run ap1_console console
