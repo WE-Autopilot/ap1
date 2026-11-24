@@ -17,7 +17,7 @@ COLOR_TOPIC = "camera/camera/color/image_raw"
 
 # 2D boxes in image pixels (#116); the association node (#90) turns them into
 # 3D objects on ap1/perception/objects
-PUBLISH_TOPIC = "ap1/perception/detections_2d"
+PUBLISH_TOPIC = "ap1/perception/objects_2d"
 
 YOLO_MODEL_FILE = "yolo26n.onnx"
 MODEL_CLASSES = {11: ObjectClass.SIGN_STOP,}

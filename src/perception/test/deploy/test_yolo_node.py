@@ -2,7 +2,7 @@
 
 Launches yolo_node and plays the role of the RealSense driver: publishes a
 stop-sign photo on the image topic the node subscribes to, then checks that it
-publishes the stop sign on ap1/perception/detections_2d as a Detection2DArray
+publishes the stop sign on ap1/perception/objects_2d as a Detection2DArray
 (issue #116): class ObjectClass.SIGN_STOP, the image's stamp and frame, and a
 pixel box around the sign. It then feeds a blank frame and checks the node
 still publishes, with an empty array.
@@ -35,7 +35,7 @@ from vision_msgs.msg import Detection2DArray
 
 # Topics yolo_node uses (ap1_perception/yolo_node.py)
 COLOR_TOPIC = 'camera/camera/color/image_raw'
-DETECTIONS_TOPIC = 'ap1/perception/detections_2d'
+DETECTIONS_TOPIC = 'ap1/perception/objects_2d'
 CAMERA_FRAME = 'camera_color_optical_frame'
 
 IMAGE_URL = 'http://images.cocodataset.org/val2017/000000000724.jpg'
