@@ -31,7 +31,7 @@ _MAX_WH = 7680  # per-class box offset that makes NMS class-aware
 
 
 class YOLO:
-    def __init__(self, model_path, classes=(11,), K=None, device="auto",
+    def __init__(self, model_path, classes=None, K=None, device="auto",
                  conf=0.25, iou=0.7, max_det=300):
         self.session = create_session(model_path, device)
 
@@ -57,21 +57,22 @@ class YOLO:
     def forward(self, img):
         """Detect objects in a BGR uint8 image.
 
-        Returns (boxes, classes): boxes is (N, 4) xyxy in pixels of `img`, classes is (N,).
+        Returns (boxes, scores, classes): boxes is (N, 4) xyxy in pixels of `img`,
+        scores (N,) are confidences in [0, 1] and classes (N,) are COCO class ids.
         """
         blob, gain, pad = self._preprocess(img)
         pred = self.session.run(None, {self.input_name: blob})[0][0]
         if self.end2end:
-            boxes, _, cls = self._filter_end2end(pred)  # pred: (max_det, 6)
+            boxes, scores, cls = self._filter_end2end(pred)  # pred: (max_det, 6)
         else:
-            boxes, _, cls = self._nms(pred.T)  # pred: (4 + nc, anchors)
+            boxes, scores, cls = self._nms(pred.T)  # pred: (4 + nc, anchors)
 
         boxes[:, [0, 2]] = (boxes[:, [0, 2]] - pad[0]) / gain[0]
         boxes[:, [1, 3]] = (boxes[:, [1, 3]] - pad[1]) / gain[1]
         h, w = img.shape[:2]
         boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, w)
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, h)
-        return boxes, cls
+        return boxes, scores, cls
 
     def __call__(self, img, points, K=None):
         if K is None and self.K is None:
@@ -80,7 +81,7 @@ class YOLO:
         if K is None:
             K = self.K
 
-        boxes, img_cls = self.forward(img)
+        boxes, _, img_cls = self.forward(img)
         centroids = box_select_points(K, points, boxes)
 
         return centroids, img_cls

@@ -1,0 +1,148 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+  - Class: rviz_common/Time
+    Name: Time
+    SyncMode: 0
+    SyncSource: PointCloud2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 40
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Arrows: false
+      Show Axes: true
+      Show Names: true
+      Marker Scale: 1
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: PointCloud2
+      Enabled: true
+      Topic:
+        Value: /sensing/lidar/pointcloud
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: Intensity
+      Channel Name: intensity
+      Use rainbow: true
+      Autocompute Intensity Bounds: true
+      Decay Time: 0
+      Position Transformer: XYZ
+      Value: true
+    # Ground truth (/ground_truth/objects), when the bag has it.
+    # Needs vision_msgs_rviz_plugins (apt: ros-jazzy-vision-msgs-rviz-plugins).
+    - Class: vision_msgs_rviz_plugins/Detection3DArray
+      Name: Ground truth
+      Enabled: true
+      Alpha: 0.4
+      Line Width: 0.05
+      Only Edge: true
+      Show Score: false
+      ConfigPath: ""
+      Topic:
+        Value: /ground_truth/objects
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: true
+    # Perception output (ICD #2); empty until the node publishes it.
+    - Class: vision_msgs_rviz_plugins/Detection3DArray
+      Name: Perception objects
+      Enabled: true
+      Alpha: 0.8
+      Line Width: 0.05
+      Only Edge: false
+      Show Score: true
+      ConfigPath: ""
+      Topic:
+        Value: /ap1/perception/objects
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Name: Image
+      Enabled: true
+      Topic:
+        Value: /sensing/camera/front/image_raw
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Normalize Range: true
+      Value: true
+    # Renders the 3D scene (cloud, boxes) through the camera model on top of
+    # the image: points landing on the objects they hit means the extrinsics
+    # on /tf_static are right.
+    - Class: rviz_default_plugins/Camera
+      Name: Camera overlay
+      Enabled: true
+      Topic:
+        Value: /sensing/camera/front/image_raw
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Image Rendering: background and overlay
+      Overlay Alpha: 0.6
+      Zoom Factor: 1
+      Visibility:
+        Grid: false
+        TF: false
+        PointCloud2: true
+        Ground truth: true
+        Perception objects: true
+        Image: false
+        Value: true
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    # Bags carry no map/odom on /tf (ICD #12); base_link is the root.
+    Fixed Frame: base_link
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Target Frame: base_link
+      Focal Point:
+        X: 8
+        Y: 0
+        Z: 0
+      Distance: 30
+      Pitch: 0.6
+      Yaw: 3.14
+      Near Clip Distance: 0.01
+Window Geometry:
+  Width: 1600
+  Height: 1000
+  Displays:
+    collapsed: false
+  Image:
+    collapsed: false
+  Camera overlay:
+    collapsed: false

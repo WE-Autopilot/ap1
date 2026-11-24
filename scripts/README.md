@@ -2,6 +2,22 @@
 
 This is for scripts.
 
+## Fetch bags
+
+`fetch_bags.py` downloads the bags listed in `bags.toml` from Hugging Face
+into `bags/` (mounted at `/ws/bags` in the dev containers), pinned to a
+dataset commit and hash-checked. Run it on the host from the repo root (any
+Python 3.11+, no packages); the containers see the bags at `/ws/bags`:
+
+```bash
+python3 scripts/fetch_bags.py                                  # every set
+python3 scripts/fetch_bags.py kitti --bag 2011_09_26_drive_0005
+```
+
+The datasets are built and uploaded by
+[ap1-datasets](https://github.com/WE-Autopilot/ap1-datasets). To view a bag
+in RViz2, see `src/perception/tools/rviz/README.md`.
+
 ## Software smoke test
 
 `software_smoke_test.sh` validates the AP1 software stack up to the hardware

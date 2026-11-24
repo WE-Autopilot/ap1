@@ -94,3 +94,24 @@ def box_select_points(K, points, boxes):
         item_centroids.append(item_centroid)
 
     return np.vstack(item_centroids)
+
+
+def cam_optical_to_base_link(pts_cam: np.ndarray) -> np.ndarray:
+    """Rotate (N, 3) points from the camera optical frame into base_link.
+
+    Camera optical is +X right, +Y down, +Z forward; base_link is +X forward,
+    +Y left, +Z up. Pure rotation: assumes the camera faces straight ahead with
+    no roll, pitch or yaw offset. TODO: add the camera's mounting translation
+    (x forward of the rear axle, z mount height) once it's measured.
+    """
+    x_cam, y_cam, z_cam = pts_cam[:, 0], pts_cam[:, 1], pts_cam[:, 2]
+    return np.stack([z_cam, -x_cam, -y_cam], axis=-1)
+
+
+def box_geometry(K, box, box_xyz):
+    center = np.median(box_xyz, axis=0)
+    depth = center[2]
+    width = (box[2] - box[0]) * depth / K[0, 0]
+    height = (box[3] - box[1]) * depth / K[1, 1]
+    p10, p90 = np.percentile(box_xyz[:, 2], [10, 90])
+    return center, np.array([width, height, p90 - p10])

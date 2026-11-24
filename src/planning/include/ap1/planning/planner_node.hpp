@@ -47,6 +47,7 @@ class PlannerNode : public rclcpp::Node
     PlannerNode(double rate_hz, std::string transitions_path);
   private:
     const double rate_hz_;
+    bool debug_;
     float speed = 0; // car speed
     float target_speed_ = 0; // target speed
 

@@ -1,35 +1,26 @@
 from pathlib import Path
 
-import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rcl_interfaces.msg import ParameterDescriptor, SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from sensor_msgs.msg import CameraInfo, Image, PointCloud2
-from geometry_msgs.msg import PoseArray, PoseStamped
-from message_filters import Subscriber, ApproximateTimeSynchronizer
+from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-import sensor_msgs_py.point_cloud2 as pc2
-from ap1_msgs.msg import EntityStateArray, EntityState
+from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
+from ap1_msgs.msg import ObjectClass
 
 from .yolo import YOLO
-from .projection import pointcloud_to_pixel, check_box
-from .ransac import GroundRANSAC
-from .ransac._plane import Plane
 
 
-DEPTH_TOPIC = "camera/camera/aligned_depth_to_color/image_raw"
 COLOR_TOPIC = "camera/camera/color/image_raw"
-PC_TOPIC = "/camera/camera/depth/color/points"
-INFO_TOPIC = "camera/camera/aligned_depth_to_color/camera_info"
 
-#PUBLISH_TOPIC = "perception/entities"
-PUBLISH_TOPIC = "ap1/perception/entities"
+# 2D boxes in image pixels (#116); the association node (#90) turns them into
+# 3D objects on ap1/perception/objects
+PUBLISH_TOPIC = "ap1/perception/objects_2d"
 
-# The only place the YOLO model's file name appears. Model files live in
-# src/perception/models/ (Git LFS) and are installed to the package's share folder.
 YOLO_MODEL_FILE = "yolo26n.onnx"
+MODEL_CLASSES = {11: ObjectClass.SIGN_STOP,}
 
 
 def default_yolo_model() -> str:
@@ -37,86 +28,34 @@ def default_yolo_model() -> str:
     return str(Path(get_package_share_directory("ap1_perception")) / "models" / YOLO_MODEL_FILE)
 
 
-def normal_to_quaternion(normal: np.ndarray) -> tuple[float, float, float, float]:
-    """Convert a unit normal vector to a quaternion with the z-axis aligned to the normal.
-
-    Returns (qx, qy, qz, qw).
-    """
-    normal = np.asarray(normal, dtype=float)
-    normal = normal / np.linalg.norm(normal)
-
-    z = np.array([0.0, 0.0, 1.0])
-    dot = np.dot(z, normal)
-
-    if dot > 1.0 - 1e-6:
-        return (0.0, 0.0, 0.0, 1.0)
-    if dot < -1.0 + 1e-6:
-        return (1.0, 0.0, 0.0, 0.0)
-
-    axis = np.cross(z, normal)
-    axis /= np.linalg.norm(axis)
-    angle = np.arccos(np.clip(dot, -1.0, 1.0))
-
-    s = np.sin(angle / 2.0)
-    return (axis[0] * s, axis[1] * s, axis[2] * s, np.cos(angle / 2.0))
-
-
-def ransac_plane_normal(points: np.ndarray) -> np.ndarray:
-    """Fit a plane to 3D points using GroundRANSAC and return the unit normal.
-
-    The normal is oriented to face the camera (negative z in camera frame).
-    """
-    centroid = np.median(points, axis=0)
-    # Initial estimate: plane at the centroid with normal pointing toward the camera.
-    initial = Plane([0.0, 0.0, -1.0], centroid)
-    ransac = GroundRANSAC(estimate=initial, max_retry=20, p_thresh=1, r_thresh=0.7, l_thresh=0.01)
-    plane = ransac(points)
-
-    normal = plane.normal
-    if normal[2] > 0:
-        normal = -normal
-    return normal
-
-
 class YoloNode(Node):
     def __init__(self):
         super().__init__('ap1_perception_yolo')
 
         self._bridge = CvBridge()
-        self._K: np.ndarray | None = None
 
         # Startup-only parameters: changing these needs a node restart (not a rebuild).
         # model_path defaults to the model installed with the package, so
         # full_system.launch.py can start this node without parameters.
         model_path = self._declare('model_path', default_yolo_model(),
                                    'YOLO .onnx model; defaults to the one installed with the package', True)
-        device = self._declare('device', 'auto', "'auto', 'tensorrt', 'cuda' or 'cpu'", True)
-        sync_queue_size = self._declare('sync_queue_size', 5, 'Image/point cloud sync queue length', True)
-        sync_slop = self._declare('sync_slop', 0.05, 'Max image/point cloud stamp gap (s)', True)
+        device = self._declare('device', 'auto', "'auto', 'cuda' or 'cpu'", True)
 
-        # Tuning parameters: can also be changed live with `ros2 param set`.
+        # Tuning parameter: can also be changed live with `ros2 param set`.
         self._declare('conf_threshold', 0.25, 'Min detection confidence, 0-1')
-        self._declare('classes', [11], 'COCO class ids to keep (11 = stop sign)')
 
-        self._model = YOLO(model_path=model_path, device=device)
+        # Detected classes are fixed by MODEL_CLASSES, not a parameter
+        self._model = YOLO(model_path=model_path, classes=list(MODEL_CLASSES), device=device)
         self._apply_tuning()
         self.add_on_set_parameters_callback(self._validate_parameters)
         self.add_post_set_parameters_callback(lambda _params: self._apply_tuning())
         self.get_logger().info(
             f"YOLO loaded from {model_path}, running on {self._model.provider} "
-            f"(conf={self._model.conf}, classes={self._model.classes.tolist()})."
+            f"(conf={self._model.conf}, classes={list(MODEL_CLASSES.values())})."
         )
 
-        self._pub = self.create_publisher(EntityStateArray, PUBLISH_TOPIC, 10)
-
-        self.create_subscription(CameraInfo, INFO_TOPIC, self._camera_info_callback, 10)
-
-        color_sub = Subscriber(self, Image, COLOR_TOPIC)
-        pc_sub = Subscriber(self, PointCloud2, PC_TOPIC)
-        self._sync = ApproximateTimeSynchronizer(
-            [color_sub, pc_sub], queue_size=sync_queue_size, slop=sync_slop
-        )
-        self._sync.registerCallback(self._sync_callback)
+        self._pub = self.create_publisher(Detection2DArray, PUBLISH_TOPIC, 10)
+        self.create_subscription(Image, COLOR_TOPIC, self._image_callback, 10)
 
     def _declare(self, name, default, description, read_only=False):
         """Declare a parameter and return its value."""
@@ -128,95 +67,42 @@ class YoloNode(Node):
         for p in params:
             if p.name == 'conf_threshold' and not 0.0 <= p.value <= 1.0:
                 return SetParametersResult(successful=False, reason='conf_threshold must be in [0, 1]')
-            if p.name == 'classes' and len(p.value) == 0:
-                return SetParametersResult(successful=False, reason='classes must not be empty')
         return SetParametersResult(successful=True)
 
     def _apply_tuning(self) -> None:
         """Copy the current tuning parameters onto the model."""
         self._model.conf = self.get_parameter('conf_threshold').value
-        self._model.classes = np.asarray(self.get_parameter('classes').value)
 
-    def _camera_info_callback(self, msg: CameraInfo) -> None:
-        if self._K is not None:
-            return
-        self._K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
-        self._model.K = self._K
-        self.get_logger().info("Camera intrinsics received - YOLO node ready.")
-
-    def _sync_callback(self, color_msg: Image, pc_msg: PointCloud2) -> None:
-        if self._K is None:
-            return
+    def _image_callback(self, color_msg: Image) -> None:
+        # Always publish, with the source image's header (stamp and camera
+        # frame): an empty array means nothing was detected in this frame.
+        out = Detection2DArray()
+        out.header = color_msg.header
 
         # YOLO expects bgr encoding not rgb
         color = self._bridge.imgmsg_to_cv2(color_msg, desired_encoding='bgr8')
+        boxes, scores, classes = self._model.forward(color)
+        for box, score, cls in zip(boxes, scores, classes):
+            out.detections.append(self._detection(box, score, cls, out.header))
 
-        # read_points_numpy returns a plain (N, 3) float array directly
-        xyz = pc2.read_points_numpy(pc_msg, field_names=('x', 'y', 'z'), skip_nans=True).astype(np.float32)
+        self._pub.publish(out)
 
-        if xyz.shape[0] == 0:
-            return
+    def _detection(self, box, score, cls, header) -> Detection2D:
+        """One Detection2D from an xyxy pixel box."""
+        x1, y1, x2, y2 = (float(v) for v in box)
+        det = Detection2D()
+        det.header = header
+        det.id = ''  # not tracked yet
+        det.bbox.center.position.x = (x1 + x2) / 2
+        det.bbox.center.position.y = (y1 + y2) / 2
+        det.bbox.size_x = x2 - x1
+        det.bbox.size_y = y2 - y1
 
-        entity_array = EntityStateArray()
-        entity_array.header = color_msg.header
-
-        boxes, _ = self._model.forward(color)
-
-        if boxes.shape[0] == 0:
-            self._pub.publish(entity_array)
-            return
-
-        pixel_coords = pointcloud_to_pixel(self._K, xyz)  # (N, 2)
-
-        # aly edit
-        # changing this PoseArray to EntityStateArray
-        # == ENTITYSTATEARRAY START
-        for box in boxes:
-            mask = check_box(pixel_coords, box)
-            box_xyz = xyz[mask]
-            if len(box_xyz) < 3:
-                continue
-            centroid = np.median(box_xyz, axis=0)
-            normal = ransac_plane_normal(box_xyz)
-            qx, qy, qz, qw = normal_to_quaternion(normal)
-            # convert quaternion to yaw angle (gamma)
-            gamma = 2.0 * np.arctan2(qz, qw)
-            entity = EntityState()
-            entity.x     = float(centroid[0])
-            entity.y     = float(centroid[1])
-            entity.z     = float(centroid[2])
-            entity.gamma = float(gamma)
-            entity_array.entities.append(entity)
-        self._pub.publish(entity_array)
-        return
-        # == ENTITYSTATEARRAY END
-        # old code:
-        pose_array = PoseArray()
-        pose_array.header = color_msg.header
-
-        for box in boxes:
-            mask = check_box(pixel_coords, box)
-            box_xyz = xyz[mask]
-
-            if len(box_xyz) < 3:
-                continue
-
-            centroid = np.median(box_xyz, axis=0)
-            normal = ransac_plane_normal(box_xyz)
-            qx, qy, qz, qw = normal_to_quaternion(normal)
-
-            pose = PoseStamped().pose
-            pose.position.x = float(centroid[0])
-            pose.position.y = float(centroid[1])
-            pose.position.z = float(centroid[2])
-            pose.orientation.x = float(qx)
-            pose.orientation.y = float(qy)
-            pose.orientation.z = float(qz)
-            pose.orientation.w = float(qw)
-
-            pose_array.poses.append(pose)
-
-        self._pub.publish(pose_array)
+        hyp = ObjectHypothesisWithPose()
+        hyp.hypothesis.class_id = MODEL_CLASSES[int(cls)]
+        hyp.hypothesis.score = float(score)
+        det.results.append(hyp)
+        return det
 
 
 def main(args=None):

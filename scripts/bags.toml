@@ -1,0 +1,15 @@
+# Bags on Hugging Face used for AP1 development. scripts/fetch_bags.py
+# downloads them into bags/<set>/. Each set is pinned to a dataset commit so
+# everyone gets the same files; after a dataset upload, set `revision` to the
+# new commit (the dataset's "Files and versions" tab).
+#
+# The datasets are built by https://github.com/WE-Autopilot/ap1-datasets.
+
+# KITTI raw drives, AP1.26 sensing contract. CC BY-NC-SA 3.0: non-commercial.
+[kitti]
+repo = "WEAP26/KITTI_mcap"
+revision = "95978dec5ba327ad5e9af389fb75f3c5f755a677"
+bags = [
+    "2011_09_26_drive_0005",
+    "2011_09_26_drive_0060",
+]
