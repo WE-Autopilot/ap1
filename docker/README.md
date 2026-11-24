@@ -153,10 +153,9 @@ the exact image that runs on the car:
 
 - `test_perception_environment.py`: dependencies import and work together
   (cv_bridge with apt's numpy, CUDA onnxruntime on GPU images), YOLO inference.
-- `test_yolo_node.py`: launches `yolo_node`, feeds it a stop-sign photo with
-  camera info and a point cloud over ROS, and checks the `Detection3DArray` on
-  `ap1/perception/objects` (class, frame, stamp, position; empty when nothing
-  is detected). The photo is downloaded to a temporary folder and deleted once
+- `test_yolo_node.py`: launches `yolo_node`, feeds it a stop-sign photo over
+  ROS, and checks the `Detection2DArray` on `ap1/perception/objects_2d`
+  (class, frame, stamp, pixel box; empty when nothing is detected). The photo is downloaded to a temporary folder and deleted once
   loaded, so this test needs internet.
 
 The other tests in `test/` are unit tests that only run in dev containers.
