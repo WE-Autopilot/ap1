@@ -39,7 +39,7 @@ def static_sensor_transform(sensor_frame, mount):
             '--pitch', str(pitch),
             '--yaw', str(yaw),
             '--frame-id', 'base_link',
-            '--child-frame-id', sensor_frame
+            '--child-frame-id', sensor_frame,
             '--ros-args',
             '--log-level', 'fatal'
         ],
