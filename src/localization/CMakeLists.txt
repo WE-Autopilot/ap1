@@ -72,6 +72,12 @@ install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Install the simulation sensor extrinsics for the localization launch file.
+install(FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../simulation/config/mounts.yaml
+  DESTINATION share/${PROJECT_NAME}/config
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
