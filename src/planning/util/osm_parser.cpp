@@ -1,9 +1,9 @@
-#include "ap1_osm_parser/osm_parser.hpp"
+#include "osm_parser.hpp"
 
 #include <tinyxml2.h>
 #include <stdexcept>
 
-namespace ap1_osm_parser
+namespace planning::util
 {
 
 namespace
@@ -27,13 +27,28 @@ std::unordered_map<std::string, std::string> parseTags(const tinyxml2::XMLElemen
 
 }  // namespace
 
-void OsmParser::loadOsm(const std::string & filepath)
+std::vector<Coordinate> getWayCoordinates(const Map & map, const std::string & way_id)
 {
-  nodes_.clear();
-  ways_.clear();
-  way_list_.clear();
-  relations_.clear();
+  const auto way_it = map.ways.find(way_id);
+  if (way_it == map.ways.end()) {
+    throw std::out_of_range("Way ID not found: " + way_id);
+  }
 
+  std::vector<Coordinate> coords;
+  coords.reserve(way_it->second.node_refs.size());
+
+  for (const auto & node_ref : way_it->second.node_refs) {
+    const auto node_it = map.nodes.find(node_ref);
+    if (node_it == map.nodes.end()) {
+      throw std::out_of_range("Node ID not found: " + node_ref);
+    }
+    coords.push_back({node_it->second.lat, node_it->second.lon});
+  }
+  return coords;
+}
+
+Map parseOSM(const std::string & filepath)
+{
   tinyxml2::XMLDocument doc;
   if (doc.LoadFile(filepath.c_str()) != tinyxml2::XML_SUCCESS) {
     throw std::runtime_error("Failed to load OSM file: " + filepath);
@@ -44,7 +59,8 @@ void OsmParser::loadOsm(const std::string & filepath)
     throw std::runtime_error("Invalid OSM file (missing <osm> root): " + filepath);
   }
 
-  // Parse <node> elements
+  Map map;
+
   for (const auto * elem = root->FirstChildElement("node");
        elem != nullptr;
        elem = elem->NextSiblingElement("node"))
@@ -58,10 +74,9 @@ void OsmParser::loadOsm(const std::string & filepath)
     elem->QueryDoubleAttribute("lat", &node.lat);
     elem->QueryDoubleAttribute("lon", &node.lon);
     node.tags = parseTags(elem);
-    nodes_[node.id] = std::move(node);
+    map.nodes[node.id] = std::move(node);
   }
 
-  // Parse <way> elements
   for (const auto * elem = root->FirstChildElement("way");
        elem != nullptr;
        elem = elem->NextSiblingElement("way"))
@@ -81,11 +96,10 @@ void OsmParser::loadOsm(const std::string & filepath)
       }
     }
     way.tags = parseTags(elem);
-    ways_[way.id] = way;
-    way_list_.push_back(std::move(way));
+    map.ways[way.id] = way;
+    map.way_list.push_back(std::move(way));
   }
 
-  // Parse <relation> elements
   for (const auto * elem = root->FirstChildElement("relation");
        elem != nullptr;
        elem = elem->NextSiblingElement("relation"))
@@ -108,71 +122,44 @@ void OsmParser::loadOsm(const std::string & filepath)
       if (const char * ro = mem->Attribute("role")) { member.role = ro; }
       rel.members.push_back(std::move(member));
     }
-    relations_.push_back(std::move(rel));
-  }
-}
 
-std::vector<Coordinate> OsmParser::getWayCoordinates(const std::string & way_id) const
-{
-  const auto way_it = ways_.find(way_id);
-  if (way_it == ways_.end()) {
-    throw std::out_of_range("Way ID not found: " + way_id);
-  }
-
-  std::vector<Coordinate> coords;
-  coords.reserve(way_it->second.node_refs.size());
-
-  for (const auto & node_ref : way_it->second.node_refs) {
-    const auto node_it = nodes_.find(node_ref);
-    if (node_it == nodes_.end()) {
-      throw std::out_of_range("Node ID not found: " + node_ref);
-    }
-    coords.push_back({node_it->second.lat, node_it->second.lon});
-  }
-  return coords;
-}
-
-std::vector<Relation> OsmParser::getLanelets() const
-{
-  std::vector<Relation> lanelets;
-
-  for (const auto & rel : relations_) {
     const auto type_it = rel.tags.find("type");
-    if (type_it == rel.tags.end() || type_it->second != "lanelet") {
-      continue;
-    }
-
-    Relation resolved = rel;
-    for (auto & member : resolved.members) {
-      if (member.type == "way") {
-        const auto way_it = ways_.find(member.id);
-        if (way_it != ways_.end()) {
-          member.tags = way_it->second.tags;
-          member.coordinates = getWayCoordinates(member.id);
+    if (type_it != rel.tags.end() && type_it->second == "lanelet") {
+      Relation lanelet = rel;
+      for (auto & member : lanelet.members) {
+        if (member.type == "way") {
+          const auto way_it = map.ways.find(member.id);
+          if (way_it != map.ways.end()) {
+            member.tags = way_it->second.tags;
+            member.coordinates = getWayCoordinates(map, member.id);
+          }
         }
       }
+      map.lanelets.push_back(std::move(lanelet));
     }
-    lanelets.push_back(std::move(resolved));
+
+    map.relations.push_back(std::move(rel));
   }
-  return lanelets;
+
+  return map;
 }
 
-std::vector<FeatureWay> OsmParser::getWaysByType(const std::string & feature_type) const
+std::vector<FeatureWay> getWaysByType(const Map & map, const std::string & feature_type)
 {
   std::vector<FeatureWay> results;
 
-  for (const auto & way : way_list_) {
+  for (const auto & way : map.way_list) {
     const auto type_it = way.tags.find("type");
     if (type_it != way.tags.end() && type_it->second == feature_type) {
       FeatureWay feature;
       feature.id = way.id;
       feature.type = feature_type;
       feature.tags = way.tags;
-      feature.coordinates = getWayCoordinates(way.id);
+      feature.coordinates = getWayCoordinates(map, way.id);
       results.push_back(std::move(feature));
     }
   }
   return results;
 }
 
-}  // namespace ap1_osm_parser
+}  // namespace planning::util
