@@ -14,7 +14,7 @@ CARLA world ──► boxes + measurements ──► PlanTDataset / PlanTAgent.g
 4. Outputs: path, waypoints, forecasting head, attention
 5. From outputs to vehicle control
 6. Code samples
-7. Sample records (`records/`)
+7. Sample records (on the Notion task card)
 8. Gotchas
 
 ---
@@ -230,7 +230,7 @@ pred_path = pred_path[0].numpy()    # (20, 2) metres
 desired_speed = float(((pred_wps[2] - pred_wps[3]) ** 2).sum() ** 0.5 * 4.0)   # m/s
 ```
 
-**Load a sample record from this folder:**
+**Load a sample record** (unzipped from Notion, or built with `make_records.py`):
 
 ```python
 import json, numpy as np
@@ -247,7 +247,15 @@ wps    = np.array(rec["model_output"]["pred_wps"]["points_xy_m"])          # 8 x
 
 ---
 
-## 7. Sample records (`records/`)
+## 7. Sample records
+
+The records are **not stored in the repo**. They're attached to the Notion task card ("PlanT2.0 ins/outs records") as `plant2_sample_records.zip`. To rebuild them locally from this folder:
+
+```bash
+python make_records.py --out records
+```
+
+Generated `records*/` folders are git-ignored, so they won't be committed by accident.
 
 Seven records. Each one has:
 - `<id>.json` — the record: raw boxes and measurements → model input → model output → controller value
