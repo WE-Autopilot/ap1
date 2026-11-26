@@ -65,6 +65,16 @@ step() { STEP=$((STEP+1)); echo -e "\n${BOLD}[Step $STEP] $1${NC}"; }
 # 1. DETECT WORKSPACE ROOT
 # =============================================================================
 hdr "AP1 Environment Setup"
+
+# The script needs Ubuntu 24.04 with ROS 2 Jazzy (apt, GNU sed, /opt/ros).
+# On macOS it fails halfway (BSD sed, no apt), so stop before touching anything.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    err "macOS detected. ap1_setup.sh needs Ubuntu 24.04 with ROS 2 Jazzy."
+    err "Run it inside an Ubuntu 24.04 container or VM (e.g. a VS Code dev container"
+    err "based on ros:jazzy), from the repo mounted there."
+    exit 1
+fi
+
 echo -e "  Detecting workspace...\n"
 
 # Try to find the workspace root by looking for the src/ directory
@@ -280,8 +290,15 @@ if [[ ! -d "$PERCEPTION_DIR" ]]; then
     err "Make sure you have cloned https://github.com/WE-Autopilot/perception into src/"
     ERRORS=$((ERRORS+1))
 else
+    # pyqt5-qt5 has no Linux arm64 wheels (Jetson, Apple Silicon containers), so
+    # uv sync fails there. Nothing in ap1_perception imports PyQt5, so skip it.
+    UV_SYNC_ARGS=()
+    if [[ "$(uname -s)" == "Linux" && "$(uname -m)" =~ ^(aarch64|arm64)$ ]]; then
+        warn "Linux arm64: skipping pyqt5, pyqt5-qt5, pyqt5-sip (no arm64 wheels, unused by perception)"
+        UV_SYNC_ARGS+=(--no-install-package pyqt5 --no-install-package pyqt5-qt5 --no-install-package pyqt5-sip)
+    fi
     info "Running uv sync in $PERCEPTION_DIR ..."
-    (cd "$PERCEPTION_DIR" && uv sync)
+    (cd "$PERCEPTION_DIR" && uv sync "${UV_SYNC_ARGS[@]}")
     ok "uv sync complete"
 
     # Activate the venv for the rest of this script session
@@ -356,6 +373,11 @@ else
     if [[ ! -f "/etc/ros/rosdep/sources.list.d/20-default.list" ]]; then
         info "Initializing rosdep..."
         sudo rosdep init 2>/dev/null || warn "rosdep init failed (may already be initialized)"
+    fi
+    # rosdep's cache is per user: an image that ran `rosdep update` as root
+    # (e.g. ros:jazzy) still leaves a normal user with none.
+    if [[ ! -d "$HOME/.ros/rosdep/sources.cache" ]]; then
+        info "Updating rosdep cache for $(whoami)..."
         rosdep update
     fi
     # Detect architecture — some packages have no ARM64 apt binaries for Jazzy
@@ -458,12 +480,24 @@ BUILD_OK=false
     # have its old path in their CMake cache, so reconfigure everything once.
     if $REMOVED_STALE; then
         echo "  Clearing build/ so remaining packages reconfigure against the new dependencies"
-        rm -rf build
+        # empty it rather than remove it: build/ may be a mounted volume (dev containers)
+        find build -mindepth 1 -delete
     fi
     # Plain `colcon build`, exactly what everyone runs by hand: per-package
     # flags live in colcon.meta. Don't add --symlink-install here; switching
     # between symlink and non-symlink builds breaks the existing build/ dir.
-    colcon build 2>&1 | \
+    # LIO-SAM, PCL and GTSAM files take 1-2 GB per compiler process, so a full
+    # parallel build gets killed on 8 GB machines (Jetson Orin Nano, Docker
+    # Desktop's default VM). Below 16 GB, build one package at a time with 2 jobs
+    # unless MAKEFLAGS is already set.
+    COLCON_ARGS=()
+    MEM_GB=$(awk '/^MemTotal:/ {print int($2 / 1024 / 1024)}' /proc/meminfo 2>/dev/null || echo 0)
+    if [[ -z "${MAKEFLAGS:-}" && "$MEM_GB" -gt 0 && "$MEM_GB" -lt 16 ]]; then
+        echo "  ${MEM_GB} GB RAM: building one package at a time with MAKEFLAGS=-j2 (slower, avoids out-of-memory kills)"
+        export MAKEFLAGS=-j2
+        COLCON_ARGS+=(--executor sequential)
+    fi
+    colcon build "${COLCON_ARGS[@]}" 2>&1 | \
         tee /tmp/ap1_colcon_build.log | \
         { grep -E "(Starting|Finished|Failed|Error|error:|warning:)" || true; }
     exit "${PIPESTATUS[0]}"
