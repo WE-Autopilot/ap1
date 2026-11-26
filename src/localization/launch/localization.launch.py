@@ -41,7 +41,7 @@ def static_sensor_transform(sensor_frame, mount):
             '--frame-id', 'base_link',
             '--child-frame-id', sensor_frame
         ],
-        output='screen'
+        output='log'
     )
 
 
