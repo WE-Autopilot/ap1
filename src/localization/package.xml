@@ -21,6 +21,12 @@
   <depend>ap1_msgs</depend>
   <depend>vision_msgs</depend>
 
+  <!-- Python ROS 2 launch dependencies -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
   <!-- Autoware nodes we launch (not linked). apt: ros-jazzy-autoware-ndt-scan-matcher,
        ros-jazzy-autoware-map-loader, ros-jazzy-autoware-map-projection-loader;
        rosdep installs them. -->
